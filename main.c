@@ -1,12 +1,14 @@
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
+#include <sys/time.h>
 
 #include <liquid/liquid.h>
 
 #define ASIZE(x) (sizeof(x) / sizeof(x[0]))
 
 void minmax(float *buff, size_t len, float *min, float *max);
+float median(float *buff, float *scratch, size_t len);
 
 void minmax(float *buff, size_t len, float *min, float *max) {
     *max = -INFINITY;
@@ -18,8 +20,29 @@ void minmax(float *buff, size_t len, float *min, float *max) {
     }
 }
 
+float median(float *buff, float *scratch, size_t len) {
+    memcpy(scratch, buff, sizeof(float) * len);
+
+    size_t i, j;
+    float key;
+
+    for(i = 1; i < len; i++) {
+        key = scratch[i];
+        j = i - 1;
+
+        while(j >= 0 && scratch[j] > key) {
+            scratch[j+1] = scratch[j];
+            j -= 1;
+        }
+        scratch[j + 1] = key;
+    }
+
+    return scratch[len / 2];
+}
+
 int main(int argc, char **argv) {
     int rc = 1;
+    struct timeval tv_start, tv_done;
 
     const int baud_rate = 1200;
     const int mark = 1200;
@@ -55,7 +78,7 @@ int main(int argc, char **argv) {
     firfilt_rrrf mark_cs, mark_sn;
     firfilt_rrrf space_cs, space_sn;
 
-    float mark_buff[win_sz * 8], space_buff[win_sz * 8];
+    float mark_buff[win_sz * 8], space_buff[win_sz * 8], data_buff[win_sz * 8];
     int buff_idx = 0;
     float mark_max = 1, mark_min = -1, space_max = 1, space_min = -1;
 
@@ -68,11 +91,13 @@ int main(int argc, char **argv) {
     float data_filt_taps[df_len];
     liquid_firdes_kaiser(df_len, fc, As, mu, data_filt_taps);
 
+    int sps = output_rate / baud_rate;
+    symsync_rrrf sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, sps, 21, 0.3f, 32); 
+
     float _kai_scale = 0;
     for(int i = 0; i < df_len; i++) {
         _kai_scale += data_filt_taps[i];
     }
-    printf("kai_scale: %f\n", _kai_scale);
     for(int i = 0; i < df_len; i++) {
         data_filt_taps[i] /= _kai_scale;
     }
@@ -80,8 +105,13 @@ int main(int argc, char **argv) {
     mark_filt = firfilt_rrrf_create(data_filt_taps, df_len); 
     space_filt = firfilt_rrrf_create(data_filt_taps, df_len); 
 
+    float mark_del_buff[5], space_del_buff[5], scratch_del_buff[5];
+    int del_buff_idx = 0;
+
     memset(mark_buff, 0, ASIZE(mark_buff));
     memset(space_buff, 0, ASIZE(space_buff));
+    memset(mark_del_buff, 0, ASIZE(mark_del_buff));
+    memset(space_del_buff, 0, ASIZE(space_del_buff));
 
     // Generate filter taps
     for(int i = 0; i < win_sz; i++) {
@@ -123,6 +153,7 @@ int main(int argc, char **argv) {
     idx = 0;
 
     float mark_scale, space_scale;
+    gettimeofday(&tv_start, NULL);
     while(1) {
         read = fread(&samps, sizeof(float), ASIZE(samps), fp);
         if(read != ASIZE(samps)) {
@@ -139,6 +170,9 @@ int main(int argc, char **argv) {
                 float mark_mag, space_mag;
                 float scale;
 
+                // Update re/im correlators @ mark freq
+                // calculate magnitude of re+im
+                // lpf magnitude, store into buffer
                 firfilt_rrrf_push(mark_cs, resamp[j]);
                 firfilt_rrrf_push(mark_sn, resamp[j]);
                 firfilt_rrrf_execute(mark_cs, &re);
@@ -148,6 +182,9 @@ int main(int argc, char **argv) {
                 firfilt_rrrf_execute(mark_filt, &mark_mag);
                 mark_buff[buff_idx] = mark_mag;
 
+                // Update re/im correlators @ space freq
+                // calculate magnitude of re+im
+                // lpf magnitude, store into buffer
                 firfilt_rrrf_push(space_cs, resamp[j]);
                 firfilt_rrrf_push(space_sn, resamp[j]);
                 firfilt_rrrf_execute(space_cs, &re);
@@ -165,6 +202,7 @@ int main(int argc, char **argv) {
                     minmax(space_buff, ASIZE(space_buff), &space_min, &space_max);
                 }
 
+                // Scale waveforms
                 scale = 1 / (mark_max - mark_min);
                 scale = (scale > 10 ? 10 : scale);
                 mark_mag -= (mark_max + mark_min) / 2;
@@ -177,8 +215,30 @@ int main(int argc, char **argv) {
                 space_mag *= scale;
                 fwrite(&space_mag, sizeof(float), 1, fout);
 
+                // Data = space - mark, differential waveforms
                 space_mag -= mark_mag;
+                data_buff[buff_idx] = space_mag;
                 fwrite(&space_mag, sizeof(float), 1, fout);
+
+                mark_mag = mark_buff[buff_idx] - mark_buff[buff_idx == 0 ? ASIZE(mark_buff) : buff_idx - 1];
+                space_mag = space_buff[buff_idx] - space_buff[buff_idx == 0 ? ASIZE(space_buff) : buff_idx - 1];
+                mark_del_buff[del_buff_idx] = fabsf(mark_mag);
+                space_del_buff[del_buff_idx] = fabsf(space_mag);
+                del_buff_idx = (del_buff_idx + 1) % ASIZE(mark_del_buff);
+                mark_mag = median(mark_del_buff, scratch_del_buff, ASIZE(mark_del_buff));
+                space_mag = median(space_del_buff, scratch_del_buff, ASIZE(space_del_buff));
+                fwrite(&mark_mag, sizeof(float), 1, fout);
+                fwrite(&space_mag, sizeof(float), 1, fout);
+
+                // Clock recovery
+                /*
+                unsigned int tmp;
+                symsync_rrrf_execute(sync, &space_mag, 1, &mark_mag, &tmp);
+                if(tmp == 0) {
+                    mark_mag = 0;
+                }
+                fwrite(&mark_mag, sizeof(float), 1, fout);
+                */
 
                 idx += 1;
             }
@@ -189,6 +249,12 @@ int main(int argc, char **argv) {
             break;
         }
     }
+
+    gettimeofday(&tv_done, NULL);
+
+    float samp_per_sec = idx / ((tv_done.tv_sec + tv_done.tv_usec / 1e6) - (tv_start.tv_sec + tv_start.tv_usec / 1e6));
+    printf("%d samp / sec\n", (int)samp_per_sec);
+    printf("%.1fx speed\n", samp_per_sec / input_rate);
 
     rc = 0;
 
