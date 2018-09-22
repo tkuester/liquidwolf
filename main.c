@@ -5,7 +5,7 @@
 
 #include <liquid/liquid.h>
 
-#include "hldc.h"
+#include "hdlc.h"
 
 #define ASIZE(x) (sizeof(x) / sizeof(x[0]))
 
@@ -123,8 +123,8 @@ int main(int argc, char **argv) {
     float last_bit = 0;
 
     size_t num_packets = 0;
-    hldc_state_t hldc;
-    hldc_init(&hldc);
+    hdlc_state_t hdlc;
+    hdlc_init(&hdlc);
 
     memset(mark_buff, 0, sizeof(mark_buff));
     memset(space_buff, 0, sizeof(space_buff));
@@ -234,9 +234,8 @@ int main(int argc, char **argv) {
                 fwrite(&space_mag, sizeof(float), 1, fout);
 
                 // Data = space - mark, differential waveforms
-                //data_mag = space_mag - mark_mag;
+                data_mag = space_mag - mark_mag;
                 //fwrite(&data_mag, sizeof(float), 1, fout);
-                data_mag = space_mag; // Works too well atm
 
                 unsigned int tmp;
                 resamp_rrrf_execute(sps2, data_mag, &data_mag, &tmp);
@@ -246,7 +245,6 @@ int main(int argc, char **argv) {
                 else if(tmp == 0) {
                     data_mag = 0;
                 }
-                data_mag *= 1.8;
                 fwrite(&data_mag, sizeof(float), 1, fout);
 
                 bool got_pkt = false;
@@ -263,21 +261,23 @@ int main(int argc, char **argv) {
                         last_bit = bit;
                         bit = nrzi;
                         size_t len;
-                        if(hldc_execute(&hldc, nrzi, &len)) {
-                            got_pkt = true;
-                            printf("Got packet with %zu samps\n", len);
-                            uint8_t byte = 0;
-                            printf("[");
-                            for(int jj = 0; jj < len; jj++) {
-                                byte >>= 1;
-                                byte |= (hldc.samps[jj] >= 0 ? 0x80 : 0);
-                                if(jj > 0 && (jj % 8) == 0) {
-                                    printf("%c", byte);
-                                    byte = 0;
+                        if(hdlc_execute(&hdlc, nrzi, &len)) {
+                            if(len > 8*8 && (len % 8) == 0) {
+                                got_pkt = true;
+                                printf("Got packet with %zu samps\n", len);
+                                uint8_t byte = 0;
+                                printf("[");
+                                for(int jj = 0; jj < len; jj++) {
+                                    byte >>= 1;
+                                    byte |= (hdlc.samps[jj] >= 0 ? 0x80 : 0);
+                                    if(jj > 0 && (jj % 8) == 0) {
+                                        printf("%c", byte);
+                                        byte = 0;
+                                    }
                                 }
+                                printf("]\n");
+                                num_packets += 1;
                             }
-                            printf("]\n");
-                            num_packets += 1;
                         }
                     }
                 }

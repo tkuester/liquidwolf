@@ -1,14 +1,14 @@
 #include <stdio.h>
 
-#include "hldc.h"
+#include "hdlc.h"
 
-void hldc_init(hldc_state_t *state) {
+void hdlc_init(hdlc_state_t *state) {
     state->in_packet = false;
     state->one_count = 0;
     state->buff_idx = 0;
 }
 
-bool hldc_execute(hldc_state_t *state, float samp, size_t *len) {
+bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
     bool bit = samp >= 0;
 
     if(bit) {
@@ -48,7 +48,7 @@ bool hldc_execute(hldc_state_t *state, float samp, size_t *len) {
     }
 
     if(state->in_packet) {
-        if(state->buff_idx < HLDC_SAMP_BUFF_LEN) {
+        if(state->buff_idx < HDLC_SAMP_BUFF_LEN) {
             state->samps[state->buff_idx] = samp;
             state->buff_idx += 1;
         } else {

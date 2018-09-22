@@ -1,10 +1,10 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "hldc.h"
+#include "hdlc.h"
 
 bool test(uint8_t *buff, size_t buff_len, size_t data_len, size_t *num_packets, bool verbose) {
-    hldc_state_t state;
+    hdlc_state_t state;
     size_t i, j;
 
     size_t ret_len = 0;
@@ -12,7 +12,7 @@ bool test(uint8_t *buff, size_t buff_len, size_t data_len, size_t *num_packets, 
 
     *num_packets = 0;
 
-    hldc_init(&state);
+    hdlc_init(&state);
     if(verbose) {
         printf("state(in_packet=%5s, one_count=%3zu, buff_idx=%3zu)\n",
                 state.in_packet ? "true" : "false",
@@ -21,7 +21,7 @@ bool test(uint8_t *buff, size_t buff_len, size_t data_len, size_t *num_packets, 
     }
 
     for(i = 0; i < buff_len; i++) {
-        found = hldc_execute(&state, (buff[i] == 1 ? 1.0 : -1.0), &ret_len);
+        found = hdlc_execute(&state, (buff[i] == 1 ? 1.0 : -1.0), &ret_len);
         if(verbose) {
             printf("%3zu state(in_packet=%5s, one_count=%3zu, buff_idx=%3zu) %d = %5s / %3zu\n",
                     i,
