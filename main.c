@@ -84,7 +84,7 @@ int main(int argc, char **argv) {
     firfilt_rrrf mark_cs, mark_sn;
     firfilt_rrrf space_cs, space_sn;
 
-    float mark_buff[win_sz * 9], space_buff[win_sz * 9], data_buff[win_sz * 9];
+    float mark_buff[win_sz * 9], space_buff[win_sz * 9];
     int buff_idx = 0;
     float mark_max = 1, mark_min = -1, space_max = 1, space_min = -1;
 
@@ -97,7 +97,6 @@ int main(int argc, char **argv) {
     float data_filt_taps[df_len];
     liquid_firdes_kaiser(df_len, fc, As, mu, data_filt_taps);
 
-    int sps = output_rate / baud_rate;
     symsync_rrrf sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, 2, 7, 0.35f, 32); 
 
     float _kai_scale = 0;
@@ -118,10 +117,10 @@ int main(int argc, char **argv) {
     hldc_state_t hldc;
     hldc_init(&hldc);
 
-    memset(mark_buff, 0, ASIZE(mark_buff));
-    memset(space_buff, 0, ASIZE(space_buff));
-    memset(mark_del_buff, 0, ASIZE(mark_del_buff));
-    memset(space_del_buff, 0, ASIZE(space_del_buff));
+    memset(mark_buff, 0, sizeof(mark_buff));
+    memset(space_buff, 0, sizeof(space_buff));
+    memset(mark_del_buff, 0, sizeof(mark_del_buff));
+    memset(space_del_buff, 0, sizeof(space_del_buff));
 
     // Generate filter taps
     for(int i = 0; i < win_sz; i++) {
@@ -164,7 +163,7 @@ int main(int argc, char **argv) {
     idx = 0;
 
     float mark_del_peak = 0.0, space_del_peak = 0.0;
-    int mark_del_val = 1, space_del_val = 1;
+    int mark_del_val = 1;
     gettimeofday(&tv_start, NULL);
     while(1) {
         read = fread(&samps, sizeof(float), ASIZE(samps), fp);
@@ -229,7 +228,6 @@ int main(int argc, char **argv) {
 
                 // Data = space - mark, differential waveforms
                 data_mag = space_mag - mark_mag;
-                data_buff[buff_idx] = data_mag;
                 fwrite(&data_mag, sizeof(float), 1, fout);
 
                 mark_mag -= mark_buff[buff_idx == 0 ? ASIZE(mark_buff) : buff_idx - 1];
@@ -261,7 +259,7 @@ int main(int argc, char **argv) {
                 space_del_peak = mark_del_val * 0.5;
                 fwrite(&space_del_peak, sizeof(float), 1, fout);
 
-                int tmp;
+                unsigned int tmp;
                 float bit = 0;
                 resamp_rrrf_execute(sps2, data_mag, &data_mag, &tmp);
                 if(tmp > 1) {
