@@ -67,27 +67,23 @@ void dump_packet(uint8_t *buff, size_t len) {
 
     size_t i;
     uint8_t byte;
+
     for(i = 0; i < len; i++) {
-        /*
         byte = buff[i] >> 1;
-        if(i > 0 && (i % 7) == 0) {
+        if(i > 0 && (i % 7) == 6) {
             printf("-%d\n", byte & 0x0f);
         }
         else if(byte != ' ') {
-            printf("%c", byte);
+            if(byte >= 32 && byte < 0x7f) printf("%c", byte);
+            else printf(".");
         }
 
         if(buff[i] & 1) {
+            printf("last char at %zu\n", i);
             break;
         }
-        */
-        if(i > 0 && (i % 16) == 0) {
-            printf("\n");
-        }
-        printf("%02x ", buff[i]);
     }
     printf("\n");
-    return;
 
     uint8_t control = buff[i + 1];
     uint8_t pid = buff[i + 2];
@@ -95,7 +91,8 @@ void dump_packet(uint8_t *buff, size_t len) {
     printf("PID: %02x\n", pid);
     i += 3;
     while(i < (len - 2)) {
-        printf("%c", buff[i]);
+        if(buff[i] >= 32 && buff[i] < 0x7f) printf("%c", buff[i]);
+        else printf(".");
         i++;
     }
     printf("\n");
@@ -107,11 +104,9 @@ void dump_packet(uint8_t *buff, size_t len) {
 bool crc16_ccitt(float *buff, size_t len) {
     uint8_t data[4096];
 
+    if(len < 32) return false;
     if((len % 8) != 0) return false;
     if(len > (4096 * 8)) return false;
-
-    // XXX: FIXME
-    len += 8;
 
     memset(data, 0, sizeof(data));
     uint8_t byte = 0;
@@ -136,7 +131,7 @@ bool crc16_ccitt(float *buff, size_t len) {
         printf("pkt crc    = 0x%04x\n", crc);
         printf("================================\n");
     }
-    return ret == 0;
+    return ret == crc;
 }
 
 uint16_t calc_crc(unsigned char *data, size_t len) {
@@ -152,3 +147,17 @@ uint16_t calc_crc(unsigned char *data, size_t len) {
     return crc ^ 0xFFFF;
 }
 
+#if 0
+uint16_t calc_crc(unsigned char *data, size_t len) {
+    unsigned int POLY=0x8408; //reflected 0x1021
+    unsigned short crc=0xFFFF;
+    for(size_t i=0; i<len; i++) {
+        crc ^= data[i];
+        for(size_t j=0; j<8; j++) {
+            if(crc&0x01) crc = (crc >> 1) ^ POLY;
+            else         crc = (crc >> 1);
+        }
+    }
+    return crc ^ 0xFFFF;
+}
+#endif
