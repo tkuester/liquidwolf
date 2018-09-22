@@ -12,6 +12,9 @@
 void minmax(float *buff, size_t len, float *min, float *max);
 float median(float *buff, float *scratch, size_t len);
 
+/**
+ * finds the min/max value of an array
+ */
 void minmax(float *buff, size_t len, float *min, float *max) {
     *max = -INFINITY;
     *min = INFINITY;
@@ -22,12 +25,17 @@ void minmax(float *buff, size_t len, float *min, float *max) {
     }
 }
 
+/**
+ * Simple median filter, useful for knocking out glitches
+ * and spurious noise
+ */
 float median(float *buff, float *scratch, size_t len) {
     memcpy(scratch, buff, sizeof(float) * len);
 
     size_t i, j;
     float key;
 
+    // Insertion sort
     for(i = 1; i < len; i++) {
         key = scratch[i];
         j = i - 1;
@@ -64,9 +72,10 @@ int main(int argc, char **argv) {
     unsigned int npfb = 32;
     resamp_rrrf rs = NULL;
 
+    const int sps = 2;
     resamp_rrrf sps2 = NULL;
-    float r2 = 2.0f * baud_rate / input_rate;
-    float bw2 = 0.2;
+    float r2 = (float)sps * baud_rate / output_rate;
+    float bw2 = 0.15;
 
     const unsigned int n = (unsigned int)ceilf(r);
     float resamp[n];
@@ -89,7 +98,7 @@ int main(int argc, char **argv) {
     float mark_max = 1, mark_min = -1, space_max = 1, space_min = -1;
 
     firfilt_rrrf mark_filt, space_filt;
-    float fc = 0.08f;
+    float fc = 0.10f;
     float ft = 0.15f;
     float As = 60.0f;
     float mu = 0.0f;
@@ -97,7 +106,7 @@ int main(int argc, char **argv) {
     float data_filt_taps[df_len];
     liquid_firdes_kaiser(df_len, fc, As, mu, data_filt_taps);
 
-    symsync_rrrf sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, 2, 7, 0.35f, 32); 
+    symsync_rrrf sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, 2, 7, 0.35, 32); 
 
     float _kai_scale = 0;
     for(int i = 0; i < df_len; i++) {
@@ -110,8 +119,8 @@ int main(int argc, char **argv) {
     mark_filt = firfilt_rrrf_create(data_filt_taps, df_len); 
     space_filt = firfilt_rrrf_create(data_filt_taps, df_len); 
 
-    float mark_del_buff[5], space_del_buff[5], scratch_del_buff[5];
-    int del_buff_idx = 0;
+    float bit = 0;
+    float last_bit = 0;
 
     size_t num_packets = 0;
     hldc_state_t hldc;
@@ -119,8 +128,6 @@ int main(int argc, char **argv) {
 
     memset(mark_buff, 0, sizeof(mark_buff));
     memset(space_buff, 0, sizeof(space_buff));
-    memset(mark_del_buff, 0, sizeof(mark_del_buff));
-    memset(space_del_buff, 0, sizeof(space_del_buff));
 
     // Generate filter taps
     for(int i = 0; i < win_sz; i++) {
@@ -162,8 +169,6 @@ int main(int argc, char **argv) {
 
     idx = 0;
 
-    float mark_del_peak = 0.0, space_del_peak = 0.0;
-    int mark_del_val = 1;
     gettimeofday(&tv_start, NULL);
     while(1) {
         read = fread(&samps, sizeof(float), ASIZE(samps), fp);
@@ -180,6 +185,8 @@ int main(int argc, char **argv) {
                 float re, im;
                 float mark_mag, space_mag, data_mag;
                 float scale;
+
+                fwrite(&resamp[j], sizeof(float), 1, fout);
 
                 // Update re/im correlators @ mark freq
                 // calculate magnitude of re+im
@@ -227,78 +234,60 @@ int main(int argc, char **argv) {
                 fwrite(&space_mag, sizeof(float), 1, fout);
 
                 // Data = space - mark, differential waveforms
-                data_mag = space_mag - mark_mag;
-                fwrite(&data_mag, sizeof(float), 1, fout);
-
-                mark_mag -= mark_buff[buff_idx == 0 ? ASIZE(mark_buff) : buff_idx - 1];
-                space_mag -= space_buff[buff_idx == 0 ? ASIZE(space_buff) : buff_idx - 1];
-                mark_del_buff[del_buff_idx] = fabsf(mark_mag);
-                space_del_buff[del_buff_idx] = fabsf(space_mag);
-                del_buff_idx = (del_buff_idx + 1) % ASIZE(mark_del_buff);
-                mark_mag = median(mark_del_buff, scratch_del_buff, ASIZE(mark_del_buff));
-                space_mag = median(space_del_buff, scratch_del_buff, ASIZE(space_del_buff));
-
-                if(mark_mag > mark_del_peak) {
-                    mark_del_peak = mark_mag + mark_del_peak / 2;
-                } else {
-                    mark_del_peak *= 0.995;
-                }
-                if(space_mag > space_del_peak) {
-                    space_del_peak = space_mag + space_del_peak / 2;
-                } else {
-                    space_del_peak *= 0.995;
-                }
-                fwrite(&mark_del_peak, sizeof(float), 1, fout);
-                //fwrite(&space_del_peak, sizeof(float), 1, fout);
-
-                if(mark_del_val == 1 && mark_del_peak < 0.3) {
-                    mark_del_val = 0;
-                } else if(mark_del_val == 0 && mark_del_peak > 0.7) {
-                    mark_del_val = 1;
-                }
-                space_del_peak = mark_del_val * 0.5;
-                fwrite(&space_del_peak, sizeof(float), 1, fout);
+                //data_mag = space_mag - mark_mag;
+                //fwrite(&data_mag, sizeof(float), 1, fout);
+                data_mag = space_mag; // Works too well atm
 
                 unsigned int tmp;
-                float bit = 0;
                 resamp_rrrf_execute(sps2, data_mag, &data_mag, &tmp);
                 if(tmp > 1) {
                     printf("Uhoh \n");
                 }
+                else if(tmp == 0) {
+                    data_mag = 0;
+                }
+                data_mag *= 1.8;
+                fwrite(&data_mag, sizeof(float), 1, fout);
+
+                bool got_pkt = false;
+                bit = 0;
                 if(tmp == 1) {
                     symsync_rrrf_execute(sync, &data_mag, 1, &bit, &tmp);
-                    if(tmp == 0) {
-                        bit = 0;
-                    } else {
+                    if(tmp == 1) {
+                        float nrzi;
+                        if((bit < 0 && last_bit >= 0) || (bit >= 0 && last_bit < 0)) {
+                            nrzi = fabs(bit) * -1.0f;
+                        } else {
+                            nrzi = fabs(bit);
+                        }
+                        last_bit = bit;
+                        bit = nrzi;
                         size_t len;
-                        if(hldc_execute(&hldc, bit, &len)) {
-                            if(len > 64 && (len % 8) == 0) {
-                                uint8_t byte = 0;
-                                for(int jj = 0; jj < len; jj++) {
-                                    byte >>= 1;
-                                    byte |= (hldc.samps[jj] >= 0 ? 0x80 : 0);
-                                    if(jj > 0 && (jj % 8) == 0) {
-                                        printf("%02x", byte);
-                                        byte = 0;
-                                    }
+                        if(hldc_execute(&hldc, nrzi, &len)) {
+                            got_pkt = true;
+                            printf("Got packet with %zu samps\n", len);
+                            uint8_t byte = 0;
+                            printf("[");
+                            for(int jj = 0; jj < len; jj++) {
+                                byte >>= 1;
+                                byte |= (hldc.samps[jj] >= 0 ? 0x80 : 0);
+                                if(jj > 0 && (jj % 8) == 0) {
+                                    printf("%c", byte);
+                                    byte = 0;
                                 }
-                                printf("\n");
-                                num_packets += 1;
                             }
+                            printf("]\n");
+                            num_packets += 1;
                         }
                     }
                 }
                 fwrite(&bit, sizeof(float), 1, fout);
 
-                // Clock recovery
-                /*
-                unsigned int tmp;
-                symsync_rrrf_execute(sync, &space_mag, 1, &mark_mag, &tmp);
-                if(tmp == 0) {
-                    mark_mag = 0;
-                }
-                fwrite(&mark_mag, sizeof(float), 1, fout);
-                */
+                float tau = symsync_rrrf_get_tau(sync);
+                fwrite(&tau, sizeof(float), 1, fout);
+
+                tau = got_pkt ? 0.8 : 0;
+                fwrite(&tau, sizeof(float), 1, fout);
 
                 idx += 1;
             }
