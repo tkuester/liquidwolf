@@ -67,7 +67,7 @@ int main(int argc, char **argv) {
 
     unsigned int h_len = 13;
     float r = 1.0f * output_rate / input_rate;
-    float bw = 0.25f;
+    float bw = 0.100;
     float slsl = 60.0f;
     unsigned int npfb = 32;
     resamp_rrrf rs = NULL;
@@ -192,10 +192,11 @@ int main(int argc, char **argv) {
                 // calculate magnitude of re+im
                 // lpf magnitude, store into buffer
                 firfilt_rrrf_push(mark_cs, resamp[j]);
-                firfilt_rrrf_push(mark_sn, resamp[j]);
                 firfilt_rrrf_execute(mark_cs, &re);
+                firfilt_rrrf_push(mark_sn, resamp[j]);
                 firfilt_rrrf_execute(mark_sn, &im);
                 mark_mag = sqrtf(re * re + im * im);
+
                 firfilt_rrrf_push(mark_filt, mark_mag);
                 firfilt_rrrf_execute(mark_filt, &mark_mag);
                 mark_buff[buff_idx] = mark_mag;
@@ -204,10 +205,11 @@ int main(int argc, char **argv) {
                 // calculate magnitude of re+im
                 // lpf magnitude, store into buffer
                 firfilt_rrrf_push(space_cs, resamp[j]);
-                firfilt_rrrf_push(space_sn, resamp[j]);
                 firfilt_rrrf_execute(space_cs, &re);
+                firfilt_rrrf_push(space_sn, resamp[j]);
                 firfilt_rrrf_execute(space_sn, &im);
                 space_mag = sqrtf(re * re + im * im);
+
                 firfilt_rrrf_push(space_filt, space_mag);
                 firfilt_rrrf_execute(space_filt, &space_mag);
                 space_buff[buff_idx] = space_mag;
@@ -263,19 +265,7 @@ int main(int argc, char **argv) {
                         size_t len;
                         if(hdlc_execute(&hdlc, nrzi, &len)) {
                             if(len > 8*8 && (len % 8) == 0) {
-                                got_pkt = true;
-                                printf("Got packet with %zu samps\n", len);
-                                uint8_t byte = 0;
-                                printf("[");
-                                for(int jj = 0; jj < len; jj++) {
-                                    byte >>= 1;
-                                    byte |= (hdlc.samps[jj] >= 0 ? 0x80 : 0);
-                                    if(jj > 0 && (jj % 8) == 0) {
-                                        printf("%c", byte);
-                                        byte = 0;
-                                    }
-                                }
-                                printf("]\n");
+								got_pkt = crc16_ccitt((float *)&hdlc.samps, len);
                                 num_packets += 1;
                             }
                         }

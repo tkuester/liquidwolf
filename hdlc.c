@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 #include "hdlc.h"
 
@@ -60,3 +61,94 @@ bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
 
     return false;
 }
+
+void dump_packet(uint8_t *buff, size_t len) {
+    uint16_t crc = buff[len - 1] << 8 | buff[len - 2];
+
+    size_t i;
+    uint8_t byte;
+    for(i = 0; i < len; i++) {
+        /*
+        byte = buff[i] >> 1;
+        if(i > 0 && (i % 7) == 0) {
+            printf("-%d\n", byte & 0x0f);
+        }
+        else if(byte != ' ') {
+            printf("%c", byte);
+        }
+
+        if(buff[i] & 1) {
+            break;
+        }
+        */
+        if(i > 0 && (i % 16) == 0) {
+            printf("\n");
+        }
+        printf("%02x ", buff[i]);
+    }
+    printf("\n");
+    return;
+
+    uint8_t control = buff[i + 1];
+    uint8_t pid = buff[i + 2];
+    printf("Control: %02x\n", control);
+    printf("PID: %02x\n", pid);
+    i += 3;
+    while(i < (len - 2)) {
+        printf("%c", buff[i]);
+        i++;
+    }
+    printf("\n");
+
+    printf("Checksum: %04x\n", crc);
+    printf("--------------------------------\n");
+}
+
+bool crc16_ccitt(float *buff, size_t len) {
+    uint8_t data[4096];
+
+    if((len % 8) != 0) return false;
+    if(len > (4096 * 8)) return false;
+
+    // XXX: FIXME
+    len += 8;
+
+    memset(data, 0, sizeof(data));
+    uint8_t byte = 0;
+    size_t j = 0;
+    for(size_t i = 0; i < len; i++) {
+        byte >>= 1;
+        byte |= (buff[i] >= 0 ? 0x80 : 0);
+        if(i > 0 && (i % 8) == 0) {
+            data[j] = byte;
+            j += 1;
+        }
+    }
+    size_t pktlen = j;
+
+    uint16_t ret = calc_crc(data, pktlen - 2);
+    uint16_t crc = data[pktlen - 1] << 8 | data[pktlen - 2];
+
+    if(ret == crc) {
+        printf("Got packet with %zu samps\n", len);
+        dump_packet(data, pktlen);
+        printf("calc'd crc = 0x%04x\n", ret);
+        printf("pkt crc    = 0x%04x\n", crc);
+        printf("================================\n");
+    }
+    return ret == 0;
+}
+
+uint16_t calc_crc(unsigned char *data, size_t len) {
+    unsigned int POLY=0x8408; //reflected 0x1021
+    unsigned short crc=0xFFFF;
+    for(size_t i=0; i<len; i++) {
+        crc ^= data[i];
+        for(size_t j=0; j<8; j++) {
+            if(crc&0x01) crc = (crc >> 1) ^ POLY;
+            else         crc = (crc >> 1);
+        }
+    }
+    return crc ^ 0xFFFF;
+}
+

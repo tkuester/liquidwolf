@@ -7,6 +7,10 @@
 
 #define HDLC_SAMP_BUFF_LEN ((256 + 10) * 8)
 
+#define FCSINIT 0xFFFF
+#define FCSGOOD 0xF0B8
+#define FCSSIZE 2 /* 16 bit FCS */ 
+
 typedef struct {
     bool in_packet;
     size_t one_count;
@@ -17,5 +21,6 @@ typedef struct {
 void hdlc_init(hdlc_state_t *state);
 bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len);
 
-
+bool crc16_ccitt(float *buff, size_t len);
+uint16_t calc_crc(unsigned char *data, size_t len);
 #endif
