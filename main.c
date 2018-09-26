@@ -72,10 +72,10 @@ int main(int argc, char **argv) {
     unsigned int npfb = 32;
     resamp_rrrf rs = NULL;
 
-    const int sps = 2;
+    const int sps = 4;
     resamp_rrrf sps2 = NULL;
     float r2 = (float)sps * baud_rate / output_rate;
-    float bw2 = 0.15;
+    float bw2 = 0.18;
 
     const unsigned int n = (unsigned int)ceilf(r);
     float resamp[n];
@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
     float data_filt_taps[df_len];
     liquid_firdes_kaiser(df_len, fc, As, mu, data_filt_taps);
 
-    symsync_rrrf sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, 2, 7, 0.35, 32); 
+    symsync_rrrf sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, sps, 7, 0.35, 32);
 
     float _kai_scale = 0;
     for(int i = 0; i < df_len; i++) {
