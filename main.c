@@ -130,6 +130,21 @@ int main(int argc, char **argv) {
     memset(mark_buff, 0, sizeof(mark_buff));
     memset(space_buff, 0, sizeof(space_buff));
 
+    // Calc'd at 4 sps
+    float sync_search[] = {-0.327787071466, -0.863485574722, -0.846625030041, -0.237066477537,
+                           0.509203135967, 0.92675024271, 0.967760741711, 0.90081679821,
+                           0.890751242638, 0.906954228878, 0.90988856554, 0.908331274986,
+                           0.909126937389, 0.910285055637, 0.910628736019, 0.910407721996,
+                           0.910471260548, 0.911236822605, 0.911468148232, 0.911164462566,
+                           0.91139292717, 0.912554085255, 0.912695467472, 0.911213994026,
+                           0.910359799862, 0.912545442581, 0.908676445484, 0.896155297756,
+                           0.916578114033, 0.974584817886, 0.887850761414, 0.431282520294,
+                           -0.297088474035, -0.840644657612, -0.802261173725, -0.211893334985};
+    float sync_buff[ASIZE(sync_search)] = {0};
+    size_t sync_buff_idx = 0;
+    float sync_buff_sum;
+    bool sync_lock = false;
+
     // Generate filter taps
     for(int i = 0; i < win_sz; i++) {
         win[i] = sin(1.0f * M_PI * i / (win_sz - 1));
@@ -250,6 +265,20 @@ int main(int argc, char **argv) {
                 }
                 fwrite(&data_mag, sizeof(float), 1, fout);
 
+                if(tmp == 1) {
+                    sync_buff[sync_buff_idx] = data_mag;
+                    sync_buff_idx = (sync_buff_idx + 1) % ASIZE(sync_buff);
+                    sync_buff_sum = 0;
+                    for(size_t _sb = 0; _sb < ASIZE(sync_buff); _sb++) {
+                        sync_buff_sum += sync_search[_sb] * sync_buff[(sync_buff_idx + _sb) % ASIZE(sync_buff)];
+                    }
+                    sync_buff_sum /= 26.0f;
+                    sync_buff_sum = fabs(sync_buff_sum);
+                    fwrite(&sync_buff_sum, sizeof(float), 1, fout);
+                } else {
+                    fwrite(&data_mag, sizeof(float), 1, fout);
+                }
+
                 bool got_pkt = false;
                 bit = 0;
                 if(tmp == 1) {
@@ -264,22 +293,36 @@ int main(int argc, char **argv) {
                         last_bit = bit;
                         bit = nrzi;
                         size_t len;
-                        printf("%d ", (nrzi >= 0 ? 1 : 0));
+                        //printf("%d ", (nrzi >= 0 ? 1 : 0));
                         if(hdlc_execute(&hdlc, nrzi, &len)) {
-                            printf("hdlc_exec returned true with %zu len\n", len);
+                            //printf("hdlc_exec returned true with %zu len\n", len);
                             if((len % 8) == 0) {
 								if(crc16_ccitt((float *)&hdlc.samps, len)) {
                                     num_packets += 1;
+                                    got_pkt = true;
                                 } else {
                                     flip_smallest((float *)&hdlc.samps, len);
                                     if(crc16_ccitt((float *)&hdlc.samps, len)) {
                                         num_one_flip_packets += 1;
                                         num_packets += 1;
+                                        got_pkt = true;
                                     }
                                 }
                             }
                         }
-                        hdlc_debug(&hdlc);
+                        /*
+                         * Doesn't quite help
+                        if(hdlc.in_packet && hdlc.buff_idx >= 64 && !sync_lock) {
+                            symsync_rrrf_lock(sync);
+                            sync_lock = true;
+                        } else {
+                            if(sync_lock) {
+                                symsync_rrrf_unlock(sync);
+                                sync_lock = false;
+                            }
+                        }
+                        */
+                        //hdlc_debug(&hdlc);
                     }
                 }
                 fwrite(&bit, sizeof(float), 1, fout);
