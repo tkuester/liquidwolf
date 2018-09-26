@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #include "hdlc.h"
 
@@ -169,17 +170,17 @@ uint16_t calc_crc(uint8_t *data, size_t len) {
     return crc ^ 0xFFFF;
 }
 
-#if 0
-uint16_t calc_crc(unsigned char *data, size_t len) {
-    unsigned int POLY=0x8408; //reflected 0x1021
-    unsigned short crc=0xFFFF;
-    for(size_t i=0; i<len; i++) {
-        crc ^= data[i];
-        for(size_t j=0; j<8; j++) {
-            if(crc&0x01) crc = (crc >> 1) ^ POLY;
-            else         crc = (crc >> 1);
+void flip_smallest(float *data, size_t len) {
+    float min = INFINITY;
+    size_t min_idx = 0;
+
+    for(size_t j = 0; j < len; j++) {
+        if(fabs(data[j]) < min) {
+            min_idx = j;
+            min = fabs(data[j]);
         }
     }
-    return crc ^ 0xFFFF;
+
+    data[min_idx] *= -1;
+    data[min_idx] += (data[min_idx] >= 0 ? 1 : -1);
 }
-#endif

@@ -123,6 +123,7 @@ int main(int argc, char **argv) {
     float last_bit = 0;
 
     size_t num_packets = 0;
+    size_t num_one_flip_packets = 0;
     hdlc_state_t hdlc;
     hdlc_init(&hdlc);
 
@@ -269,6 +270,12 @@ int main(int argc, char **argv) {
                             if((len % 8) == 0) {
 								if(crc16_ccitt((float *)&hdlc.samps, len)) {
                                     num_packets += 1;
+                                } else {
+                                    flip_smallest((float *)&hdlc.samps, len);
+                                    if(crc16_ccitt((float *)&hdlc.samps, len)) {
+                                        num_one_flip_packets += 1;
+                                        num_packets += 1;
+                                    }
                                 }
                             }
                         }
@@ -299,6 +306,7 @@ int main(int argc, char **argv) {
     printf("%d samp / sec\n", (int)samp_per_sec);
     printf("%.1fx speed\n", samp_per_sec / input_rate);
     printf("%zu packets\n", num_packets);
+    printf("%zu one flip packets\n", num_one_flip_packets);
 
     rc = 0;
 
