@@ -21,6 +21,6 @@ typedef struct {
 void hdlc_init(hdlc_state_t *state);
 bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len);
 
-bool crc16_ccitt(float *buff, size_t len);
-uint16_t calc_crc(unsigned char *data, size_t len);
+bool crc16_ccitt(const float *buff, size_t len);
+uint16_t calc_crc(uint8_t *data, size_t len);
 #endif

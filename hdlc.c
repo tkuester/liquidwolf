@@ -18,14 +18,13 @@ bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
         // Illegal state
         if(state->one_count > 6) {
             state->in_packet = false;
-            state->buff_idx = 0;
             return false;
         } else if(state->one_count == 6) {
             if(state->in_packet) {
                 state->in_packet = false;
 
-                if(state->buff_idx > 7) {
-                    *len = state->buff_idx - 7;
+                if(state->buff_idx > 6) {
+                    *len = state->buff_idx - 6;
                     state->buff_idx = 0;
                     return true;
                 }
@@ -39,11 +38,15 @@ bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
         // Reset the # of consecutive 1's
         state->one_count = 0;
         
-        // Receiving a stuffed bit
+        // Receiving a frame deliminter
         if(_one_count == 6) {
             state->in_packet = true;
+            state->buff_idx = 0;
+            return false;
         }
-        if(_one_count == 5) {
+
+        // Receiving a stuffed bit
+        else if(_one_count == 5) {
             return false;
         }
     }
@@ -101,7 +104,7 @@ void dump_packet(uint8_t *buff, size_t len) {
     printf("--------------------------------\n");
 }
 
-bool crc16_ccitt(float *buff, size_t len) {
+bool crc16_ccitt(const float *buff, size_t len) {
     uint8_t data[4096];
 
     if(len < 32) return false;
@@ -109,12 +112,13 @@ bool crc16_ccitt(float *buff, size_t len) {
     if(len > (4096 * 8)) return false;
 
     memset(data, 0, sizeof(data));
+
     uint8_t byte = 0;
     size_t j = 0;
     for(size_t i = 0; i < len; i++) {
         byte >>= 1;
         byte |= (buff[i] >= 0 ? 0x80 : 0);
-        if(i > 0 && (i % 8) == 0) {
+        if((i % 8) == 7) {
             data[j] = byte;
             j += 1;
         }
@@ -134,7 +138,7 @@ bool crc16_ccitt(float *buff, size_t len) {
     return ret == crc;
 }
 
-uint16_t calc_crc(unsigned char *data, size_t len) {
+uint16_t calc_crc(uint8_t *data, size_t len) {
     unsigned int POLY=0x8408; //reflected 0x1021
     unsigned short crc=0xFFFF;
     for(size_t i=0; i<len; i++) {

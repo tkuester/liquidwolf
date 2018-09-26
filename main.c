@@ -265,8 +265,6 @@ int main(int argc, char **argv) {
                         size_t len;
                         if(hdlc_execute(&hdlc, nrzi, &len)) {
                             if((len % 8) == 0) {
-                                // XXX: FIXME
-                                len += 8;
 								if(crc16_ccitt((float *)&hdlc.samps, len)) {
                                     num_packets += 1;
                                 }
