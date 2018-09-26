@@ -134,6 +134,7 @@ bool crc16_ccitt(const float *buff, size_t len) {
 
     uint8_t byte = 0;
     size_t j = 0;
+    size_t qual = 0;
     for(size_t i = 0; i < len; i++) {
         byte >>= 1;
         byte |= (buff[i] >= 0 ? 0x80 : 0);
@@ -141,14 +142,19 @@ bool crc16_ccitt(const float *buff, size_t len) {
             data[j] = byte;
             j += 1;
         }
+
+        if(buff[i] >= 0.5 || buff[i] <= -0.5) {
+            qual += 1;
+        }
     }
     size_t pktlen = j;
 
     uint16_t ret = calc_crc(data, pktlen - 2);
     uint16_t crc = data[pktlen - 1] << 8 | data[pktlen - 2];
 
-    if(ret == crc || true) {
+    if(ret == crc) {
         printf("Got packet with %zu samps\n", len);
+        printf("Quality: %.2f\n", (1.0f * qual / len));
         dump_packet(data, pktlen);
         printf("calc'd crc = 0x%04x\n", ret);
         printf("pkt crc    = 0x%04x\n", crc);
