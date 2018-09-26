@@ -18,6 +18,7 @@ typedef struct {
     size_t buff_idx;
 } hdlc_state_t;
 
+void hdlc_debug(hdlc_state_t *state);
 void hdlc_init(hdlc_state_t *state);
 bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len);
 

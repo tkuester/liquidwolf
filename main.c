@@ -263,13 +263,16 @@ int main(int argc, char **argv) {
                         last_bit = bit;
                         bit = nrzi;
                         size_t len;
+                        printf("%d ", (nrzi >= 0 ? 1 : 0));
                         if(hdlc_execute(&hdlc, nrzi, &len)) {
+                            printf("hdlc_exec returned true with %zu len\n", len);
                             if((len % 8) == 0) {
 								if(crc16_ccitt((float *)&hdlc.samps, len)) {
                                     num_packets += 1;
                                 }
                             }
                         }
+                        hdlc_debug(&hdlc);
                     }
                 }
                 fwrite(&bit, sizeof(float), 1, fout);

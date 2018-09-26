@@ -3,6 +3,13 @@
 
 #include "hdlc.h"
 
+void hdlc_debug(hdlc_state_t *state) {
+    printf("hdlc_state(in_packet=%5s, one_count=%3zu, buff_idx=%3zu)\n",
+            state->in_packet ? "true" : "false",
+            state->one_count,
+            state->buff_idx);
+}
+
 void hdlc_init(hdlc_state_t *state) {
     state->in_packet = false;
     state->one_count = 0;
@@ -72,6 +79,17 @@ void dump_packet(uint8_t *buff, size_t len) {
     uint8_t byte;
 
     for(i = 0; i < len; i++) {
+        if((i % 16) == 0) {
+            printf("%04x - ", (unsigned int)i);
+        }
+        printf("%02x ", buff[i]);
+        if(i > 0 && (i % 16) == 15) {
+            printf("\n");
+        }
+    }
+    printf("\n");
+
+    for(i = 0; i < len; i++) {
         byte = buff[i] >> 1;
         if(i > 0 && (i % 7) == 6) {
             printf("-%d\n", byte & 0x0f);
@@ -128,7 +146,7 @@ bool crc16_ccitt(const float *buff, size_t len) {
     uint16_t ret = calc_crc(data, pktlen - 2);
     uint16_t crc = data[pktlen - 1] << 8 | data[pktlen - 2];
 
-    if(ret == crc) {
+    if(ret == crc || true) {
         printf("Got packet with %zu samps\n", len);
         dump_packet(data, pktlen);
         printf("calc'd crc = 0x%04x\n", ret);
