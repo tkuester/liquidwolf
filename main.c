@@ -67,7 +67,7 @@ int main(int argc, char **argv) {
 
     unsigned int h_len = 13;
     float r = 1.0f * output_rate / input_rate;
-    float bw = 0.100;
+    float bw = 1200.0f / output_rate;
     float slsl = 60.0f;
     unsigned int npfb = 32;
     resamp_rrrf rs = NULL;
@@ -75,7 +75,7 @@ int main(int argc, char **argv) {
     const int sps = 4;
     resamp_rrrf sps2 = NULL;
     float r2 = (float)sps * baud_rate / output_rate;
-    float bw2 = 0.18;
+    float bw2 = 2400.0f / output_rate;
 
     const unsigned int n = (unsigned int)ceilf(r);
     float resamp[n];
@@ -98,15 +98,15 @@ int main(int argc, char **argv) {
     float mark_max = 1, mark_min = -1, space_max = 1, space_min = -1;
 
     firfilt_rrrf mark_filt, space_filt;
-    float fc = 0.10f;
-    float ft = 0.15f;
+    float fc = 1200.0f / output_rate;
+    float ft = 1200.0f / output_rate;
     float As = 60.0f;
     float mu = 0.0f;
     const unsigned int df_len = estimate_req_filter_len(ft, As);
     float data_filt_taps[df_len];
     liquid_firdes_kaiser(df_len, fc, As, mu, data_filt_taps);
 
-    symsync_rrrf sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, sps, 7, 0.35, 32);
+    symsync_rrrf sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, sps, 7, (4800.0f / output_rate), 32);
 
     float _kai_scale = 0;
     for(int i = 0; i < df_len; i++) {
