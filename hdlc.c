@@ -4,6 +4,7 @@
 
 #include "util.h"
 #include "hdlc.h"
+#include "ax25.h"
 
 void hdlc_debug(hdlc_state_t *state) {
     printf("hdlc_state(in_packet=%5s, one_count=%3zu, buff_idx=%3zu)\n",
@@ -74,47 +75,6 @@ bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
     return false;
 }
 
-void dump_packet(uint8_t *buff, size_t len) {
-    uint16_t crc = buff[len - 1] << 8 | buff[len - 2];
-
-    size_t i;
-    uint8_t byte;
-
-    hexdump(stdout, buff, len);
-
-    for(i = 0; i < len; i++) {
-        byte = buff[i] >> 1;
-        if(i > 0 && (i % 7) == 6) {
-            printf("-%d\n", byte & 0x0f);
-        }
-        else if(byte != ' ') {
-            if(byte >= 32 && byte < 0x7f) printf("%c", byte);
-            else printf(".");
-        }
-
-        if(buff[i] & 1) {
-            printf("last char at %zu\n", i);
-            break;
-        }
-    }
-    printf("\n");
-
-    uint8_t control = buff[i + 1];
-    uint8_t pid = buff[i + 2];
-    printf("Control: %02x\n", control);
-    printf("PID: %02x\n", pid);
-    i += 3;
-    while(i < (len - 2)) {
-        if(buff[i] >= 32 && buff[i] < 0x7f) printf("%c", buff[i]);
-        else printf(".");
-        i++;
-    }
-    printf("\n");
-
-    printf("Checksum: %04x\n", crc);
-    printf("--------------------------------\n");
-}
-
 bool crc16_ccitt(const float *buff, size_t len) {
     // TODO: Min frame length: 136 bits?
     if(len < 32) return false;
@@ -123,15 +83,20 @@ bool crc16_ccitt(const float *buff, size_t len) {
 
     uint8_t data[4096];
     float qual;
+    ax25_pkt_t pkt;
+
     size_t pktlen = bit_buff_to_bytes(buff, len, data, 4096, &qual);
 
     uint16_t ret = calc_crc(data, pktlen - 2);
     uint16_t crc = data[pktlen - 1] << 8 | data[pktlen - 2];
 
     if(ret == crc) {
+        bool unpacked_ok = unpack_ax25(&pkt, data, pktlen);
+        hexdump(stdout, data, pktlen);
+        printf("Unpacked: %s\n", unpacked_ok ? "ok" : "err");
+        dump_pkt(&pkt);
         printf("Got packet with %zu samps\n", len);
         printf("Quality: %.2f\n", (1.0f * qual / len));
-        dump_packet(data, pktlen);
         printf("calc'd crc = 0x%04x\n", ret);
         printf("pkt crc    = 0x%04x\n", crc);
         printf("================================\n");
