@@ -2,6 +2,7 @@
 #include <string.h>
 #include <math.h>
 
+#include "util.h"
 #include "hdlc.h"
 
 void hdlc_debug(hdlc_state_t *state) {
@@ -79,16 +80,7 @@ void dump_packet(uint8_t *buff, size_t len) {
     size_t i;
     uint8_t byte;
 
-    for(i = 0; i < len; i++) {
-        if((i % 16) == 0) {
-            printf("%04x - ", (unsigned int)i);
-        }
-        printf("%02x ", buff[i]);
-        if(i > 0 && (i % 16) == 15) {
-            printf("\n");
-        }
-    }
-    printf("\n");
+    hexdump(stdout, buff, len);
 
     for(i = 0; i < len; i++) {
         byte = buff[i] >> 1;
@@ -124,30 +116,14 @@ void dump_packet(uint8_t *buff, size_t len) {
 }
 
 bool crc16_ccitt(const float *buff, size_t len) {
-    uint8_t data[4096];
-
+    // TODO: Min frame length: 136 bits?
     if(len < 32) return false;
     if((len % 8) != 0) return false;
     if(len > (4096 * 8)) return false;
 
-    memset(data, 0, sizeof(data));
-
-    uint8_t byte = 0;
-    size_t j = 0;
-    size_t qual = 0;
-    for(size_t i = 0; i < len; i++) {
-        byte >>= 1;
-        byte |= (buff[i] >= 0 ? 0x80 : 0);
-        if((i % 8) == 7) {
-            data[j] = byte;
-            j += 1;
-        }
-
-        if(buff[i] >= 0.5 || buff[i] <= -0.5) {
-            qual += 1;
-        }
-    }
-    size_t pktlen = j;
+    uint8_t data[4096];
+    float qual;
+    size_t pktlen = bit_buff_to_bytes(buff, len, data, 4096, &qual);
 
     uint16_t ret = calc_crc(data, pktlen - 2);
     uint16_t crc = data[pktlen - 1] << 8 | data[pktlen - 2];
