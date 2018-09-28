@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
+#define MAX_NUM_ADDRS (5)
+
 typedef enum {
     ISO8208        = 0x01,
     COMP_TCPIP     = 0x06,
@@ -32,7 +34,7 @@ typedef struct {
     ax25_addr_t dst;
     ax25_addr_t src;
     uint8_t num_rpt;
-    ax25_addr_t rpt[2];
+    ax25_addr_t rpt[MAX_NUM_ADDRS];
     uint8_t ctrl;
     ax25_proto_t proto;
     const uint8_t *data;
@@ -40,7 +42,7 @@ typedef struct {
 } ax25_pkt_t;
 
 void dump_pkt(const ax25_pkt_t *pkt);
-bool unpack_ax25(ax25_pkt_t *pkt, const uint8_t *buff, size_t len);
+int unpack_ax25(ax25_pkt_t *pkt, const uint8_t *buff, size_t len);
 bool unpack_addr(ax25_addr_t *addr, const uint8_t *buff);
 
 #endif
