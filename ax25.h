@@ -41,7 +41,7 @@ typedef struct {
     size_t data_len;
 } ax25_pkt_t;
 
-void dump_pkt(const ax25_pkt_t *pkt);
+void dump_pkt(FILE *fp, const ax25_pkt_t *pkt);
 int unpack_ax25(ax25_pkt_t *pkt, const uint8_t *buff, size_t len);
 bool unpack_addr(ax25_addr_t *addr, const uint8_t *buff);
 

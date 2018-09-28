@@ -14,15 +14,18 @@ void hdlc_debug(hdlc_state_t *state) {
 }
 
 void hdlc_init(hdlc_state_t *state) {
+    if(state == NULL) return;
+
     state->in_packet = false;
     state->one_count = 0;
     state->buff_idx = 0;
 }
 
 bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
-    bool bit = samp >= 0;
+    if(state == NULL) return false;
 
-    if(bit) {
+    // Logic one
+    if(samp >= 0) {
         state->one_count += 1;
 
         // Illegal state
@@ -34,7 +37,7 @@ bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
                 state->in_packet = false;
 
                 if(state->buff_idx > 6) {
-                    *len = state->buff_idx - 6;
+                    if(len != NULL) *len = state->buff_idx - 6;
                     state->buff_idx = 0;
                     return true;
                 }
@@ -42,7 +45,10 @@ bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
                 return false;
             }
         }
-    } else {
+    }
+
+    // Logic 0
+    else {
         size_t _one_count = state->one_count;
 
         // Reset the # of consecutive 1's
@@ -92,10 +98,10 @@ bool crc16_ccitt(const float *buff, size_t len) {
 
     if(ret == crc) {
         int unpacked_ok = unpack_ax25(&pkt, data, pktlen - 2);
-        if(unpacked_ok != 0) {
+        if(unpacked_ok == 0) {
             printf("Quality: %.2f\n", qual);
             hexdump(stdout, data, pktlen);
-            dump_pkt(&pkt);
+            dump_pkt(stdout, &pkt);
             printf("================================\n");
         }
     }

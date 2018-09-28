@@ -3,20 +3,40 @@
 
 #include "ax25.h"
 
-void dump_pkt(const ax25_pkt_t *pkt) {
+/**
+ * Prints a file to the given file pointer
+ */
+void dump_pkt(FILE *fp, const ax25_pkt_t *pkt) {
     if(pkt == NULL) return;
-    printf("%s-%d -> %s-%d:", pkt->src.callsign, pkt->src.ssid, pkt->dst.callsign, pkt->dst.ssid);
+
+    fprintf(fp, "%s-%d (%s) -> %s-%d (%s):",
+        pkt->src.callsign, pkt->src.ssid, (pkt->src.cr ? "cmd" : "rsp"),
+        pkt->dst.callsign, pkt->dst.ssid, (pkt->dst.cr ? "cmd" : "rsp"));
+
     if(pkt->num_rpt >= 1) {
-        printf(" via %s-%d", pkt->rpt[0].callsign, pkt->rpt[0].ssid);
-        if(pkt->num_rpt == 2) {
-            printf(", %s-%d", pkt->rpt[1].callsign, pkt->rpt[1].ssid);
+        fprintf(fp, " (via: ");
+        for(size_t i = 0; i < pkt->num_rpt; i++) {
+            fprintf(fp, "%s-%d %c", pkt->rpt[i].callsign, pkt->rpt[i].ssid, (pkt->rpt[i].cr ? 'r' : '-'));
+            if(i != pkt->num_rpt - 1) fprintf(fp, ", ");
         }
+        fprintf(fp, ")");
     }
-    printf("\n");
-    printf("> %.*s\n", (int)pkt->data_len, pkt->data);
+    fprintf(fp, "\n");
+    fprintf(fp, "> %.*s\n", (int)pkt->data_len, pkt->data);
     return;
 }
 
+/**
+ * Unpacks an ax25 packet from a byte buffer.
+ *
+ * Params:
+ * pkt - The packet to unpack into
+ * buff - The buffer which contains the packet
+ * len - The size of the buffer (does not include HDLC checksum)
+ *
+ * Returns:
+ * 0 on success
+ */
 int unpack_ax25(ax25_pkt_t *pkt, const uint8_t *buff, size_t len) {
     int err = 0;
     size_t pos = 0;
@@ -58,13 +78,28 @@ int unpack_ax25(ax25_pkt_t *pkt, const uint8_t *buff, size_t len) {
     return 0;
 
 fail:
-    //printf("err: %d, ctrl: %02x, proto: %02x\n", err, pkt->ctrl, pkt->proto);
     return err;
 }
 
+/**
+ * Unpacks an AX.25 formatted address from a byte buffer.
+ * buff must have len >= 7. Since addresses are a fixed size,
+ * this function does no boundary checking. You shouldn't call
+ * it directly.
+ *
+ * Params:
+ * addr - The addr to fill
+ * buff - The buffer to receive from
+ *
+ * Returns:
+ * true if there are more addresses to parse
+ */
 bool unpack_addr(ax25_addr_t *addr, const uint8_t *buff) {
     uint8_t byte;
     size_t i;
+
+    if(addr == NULL) return false;
+    if(buff == NULL) return false;
 
     for(i = 0; i < 6; i++) {
         byte = buff[i] >> 1;
