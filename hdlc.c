@@ -91,14 +91,12 @@ bool crc16_ccitt(const float *buff, size_t len) {
     uint16_t crc = data[pktlen - 1] << 8 | data[pktlen - 2];
 
     if(ret == crc) {
-        bool unpacked_ok = unpack_ax25(&pkt, data, pktlen);
-        hexdump(stdout, data, pktlen);
-        printf("Unpacked: %s\n", unpacked_ok ? "ok" : "err");
+        bool unpacked_ok = unpack_ax25(&pkt, data, pktlen - 2);
+        printf("Quality: %.2f\n", qual);
+        if(!unpacked_ok) {
+            hexdump(stdout, data, pktlen);
+        }
         dump_pkt(&pkt);
-        printf("Got packet with %zu samps\n", len);
-        printf("Quality: %.2f\n", (1.0f * qual / len));
-        printf("calc'd crc = 0x%04x\n", ret);
-        printf("pkt crc    = 0x%04x\n", crc);
         printf("================================\n");
     }
     return ret == crc;
