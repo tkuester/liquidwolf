@@ -28,6 +28,7 @@ int buff_idx;
 float *cos_mark = NULL, *sin_mark = NULL, *cos_space = NULL, *sin_space = NULL;
 float *mark_buff = NULL, *space_buff = NULL;
 float *data_filt_taps = NULL;
+#define SCALE_WIN_LEN (9)
 float mark_max, mark_min, space_max, space_min;
 float mark_scale = 1.0;
 float space_scale = 1.0;
@@ -87,11 +88,11 @@ bool dsp_init(int _input_rate) {
     // Stage 3.1 - "AGC" scaling for mark/space channels
     mark_max = space_max = 1;
     mark_min = space_min = -1;
-    mark_buff = malloc(sizeof(float) * win_sz * 9);
-    space_buff = malloc(sizeof(float) * win_sz * 9);
+    mark_buff = malloc(sizeof(float) * win_sz * SCALE_WIN_LEN);
+    space_buff = malloc(sizeof(float) * win_sz * SCALE_WIN_LEN);
     if(!mark_buff || !space_buff) goto fail;
-    memset(mark_buff, 0, sizeof(float) * win_sz * 9);
-    memset(space_buff, 0, sizeof(float) * win_sz * 9);
+    memset(mark_buff, 0, sizeof(float) * win_sz * SCALE_WIN_LEN);
+    memset(space_buff, 0, sizeof(float) * win_sz * SCALE_WIN_LEN);
 
     // Stage 3: 1200 Hz filter for mark/space channel
     float As = 60.0f;
@@ -170,15 +171,15 @@ bool dsp_process(float samp) {
         space_buff[buff_idx] = space_mag;
 
         buff_idx += 1;
-        buff_idx %= 9 * win_sz;
+        buff_idx %= SCALE_WIN_LEN * win_sz;
 
         // Stage 3.1: Calculate AGC scaling parameters
         if(buff_idx == 0) {
-            minmax(mark_buff, 9 * 11, &mark_min, &mark_max);
+            minmax(mark_buff, SCALE_WIN_LEN * win_sz, &mark_min, &mark_max);
             mark_scale = 1.0 / (mark_max - mark_min);
             mark_scale = (mark_scale > 10 ? 10 : mark_scale);
 
-            minmax(space_buff, 9 * 11, &space_min, &space_max);
+            minmax(space_buff, SCALE_WIN_LEN * win_sz, &space_min, &space_max);
             space_scale = 1.0 / (space_max - space_min);
             space_scale = (space_scale > 10 ? 10 : space_scale);
         }
