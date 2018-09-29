@@ -107,6 +107,9 @@ bool crc16_ccitt(const float *buff, size_t len) {
     return ret == crc;
 }
 
+/**
+ * Thanks gnuradio. *yoink*
+ */
 uint16_t calc_crc(uint8_t *data, size_t len) {
     unsigned int POLY=0x8408; //reflected 0x1021
     unsigned short crc=0xFFFF;
