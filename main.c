@@ -4,6 +4,7 @@
 #include <sys/time.h>
 
 #include <liquid/liquid.h>
+#include <sndfile.h>
 
 #include "hdlc.h"
 
@@ -54,19 +55,23 @@ int main(int argc, char **argv) {
     int rc = 1;
     struct timeval tv_start, tv_done;
 
+    char *wavfile = NULL;
+    SNDFILE *sf;
+    FILE *fout;
+
     const int baud_rate = 1200;
     const int mark = 1200;
     const int space = 2200;
 
-    FILE *fp = NULL;
-    int input_rate = 44100;
-    int output_rate = 13200; // (1200: 11, 2200: 6)
-    float samps[1024];
+    int input_rate;
+    const int output_rate = 13200; // (1200: 11, 2200: 6)
+    const size_t SAMPS_SIZE = 1024;
+    float *samps;
     size_t read;
     size_t idx;
 
     unsigned int h_len = 13;
-    float r = 1.0f * output_rate / input_rate;
+    float r;
     float bw = 1200.0f / output_rate;
     float slsl = 60.0f;
     unsigned int npfb = 32;
@@ -77,11 +82,9 @@ int main(int argc, char **argv) {
     float r2 = (float)sps * baud_rate / output_rate;
     float bw2 = 2400.0f / output_rate;
 
-    const unsigned int n = (unsigned int)ceilf(r);
-    float resamp[n];
+    unsigned int n;
+    float resamp[100];
     unsigned int num_written;
-
-    FILE *fout;
 
     const int win_sz = (int)ceilf(1.0f * output_rate / baud_rate);
     float win[win_sz];
@@ -104,31 +107,17 @@ int main(int argc, char **argv) {
     float mu = 0.0f;
     const unsigned int df_len = estimate_req_filter_len(ft, As);
     float data_filt_taps[df_len];
-    liquid_firdes_kaiser(df_len, fc, As, mu, data_filt_taps);
 
-    symsync_rrrf sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, sps, 7, (4800.0f / output_rate), 32);
+    symsync_rrrf sync;
+    hdlc_state_t hdlc;
 
     float _kai_scale = 0;
-    for(int i = 0; i < df_len; i++) {
-        _kai_scale += data_filt_taps[i];
-    }
-    for(int i = 0; i < df_len; i++) {
-        data_filt_taps[i] /= _kai_scale;
-    }
-
-    mark_filt = firfilt_rrrf_create(data_filt_taps, df_len); 
-    space_filt = firfilt_rrrf_create(data_filt_taps, df_len); 
 
     float bit = 0;
     float last_bit = 0;
 
     size_t num_packets = 0;
     size_t num_one_flip_packets = 0;
-    hdlc_state_t hdlc;
-    hdlc_init(&hdlc);
-
-    memset(mark_buff, 0, sizeof(mark_buff));
-    memset(space_buff, 0, sizeof(space_buff));
 
     // Calc'd at 4 sps
     float sync_search[] = {-0.327787071466, -0.863485574722, -0.846625030041, -0.237066477537,
@@ -145,6 +134,64 @@ int main(int argc, char **argv) {
     float sync_buff_sum;
     bool sync_lock = false;
 
+    if(argc != 3) {
+        fprintf(stderr, "Usage: %s in.f32 out.f32\n", argv[0]);
+        return 1;
+    }
+
+    wavfile = argv[1];
+
+    SF_INFO sfinfo;
+    sf = sf_open(wavfile, SFM_READ, &sfinfo);
+    if(sf == NULL) {
+        fprintf(stderr, "Can't open file %s for reading\n", wavfile);
+        goto fail;
+    }
+
+    if(sfinfo.channels > 2) {
+        fprintf(stderr, "Sorry, can only work with 1 or 2 channel wav files\n");
+        goto fail;
+    }
+
+    printf("Opened %s: %d Hz, %d chan\n", wavfile, sfinfo.samplerate, sfinfo.channels);
+
+    fout = fopen(argv[2], "w");
+    if(fout == NULL) {
+        fprintf(stderr, "Can't open file %s for writing\n", argv[2]);
+        goto fail;
+    }
+
+    input_rate = sfinfo.samplerate;
+    samps = malloc(sizeof(float) * SAMPS_SIZE * sfinfo.channels);
+    if(samps == NULL) {
+        goto fail;
+    }
+
+    r = 1.0f * output_rate / input_rate;
+    n = (unsigned int)ceilf(r);
+    if(n > ASIZE(resamp)) {
+        goto fail;
+    }
+
+    liquid_firdes_kaiser(df_len, fc, As, mu, data_filt_taps);
+    sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, sps, 7, (4800.0f / output_rate), 32);
+
+    _kai_scale = 0;
+    for(int i = 0; i < df_len; i++) {
+        _kai_scale += data_filt_taps[i];
+    }
+    for(int i = 0; i < df_len; i++) {
+        data_filt_taps[i] /= _kai_scale;
+    }
+
+    mark_filt = firfilt_rrrf_create(data_filt_taps, df_len); 
+    space_filt = firfilt_rrrf_create(data_filt_taps, df_len); 
+
+    hdlc_init(&hdlc);
+
+    memset(mark_buff, 0, sizeof(mark_buff));
+    memset(space_buff, 0, sizeof(space_buff));
+
     // Generate filter taps
     for(int i = 0; i < win_sz; i++) {
         win[i] = sin(1.0f * M_PI * i / (win_sz - 1));
@@ -152,23 +199,6 @@ int main(int argc, char **argv) {
         sin_mark[i] = sinf(2 * M_PI * mark * i / output_rate) * win[i];
         cos_space[i] = cosf(2 * M_PI * space * i / output_rate) * win[i];
         sin_space[i] = sinf(2 * M_PI * space * i / output_rate) * win[i];
-    }
-
-    if(argc != 3) {
-        fprintf(stderr, "Usage: %s in.f32 out.f32\n", argv[0]);
-        return 1;
-    }
-
-    fp = fopen(argv[1], "r");
-    if(fp == NULL) {
-        fprintf(stderr, "Can't open file %s for reading\n", argv[1]);
-        goto fail;
-    }
-
-    fout = fopen(argv[2], "w");
-    if(fout == NULL) {
-        fprintf(stderr, "Can't open file %s for writing\n", argv[2]);
-        goto fail;
     }
 
     rs = resamp_rrrf_create(r, h_len, bw, slsl, npfb);
@@ -187,16 +217,18 @@ int main(int argc, char **argv) {
 
     gettimeofday(&tv_start, NULL);
     while(1) {
-        read = fread(&samps, sizeof(float), ASIZE(samps), fp);
-        if(read != ASIZE(samps)) {
-            if(ferror(fp)) {
-                fprintf(stderr, "Read error: %d\n", ferror(fp));
+        //read = fread(&samps, sizeof(float), ASIZE(samps), fp);
+        read = sf_read_float(sf, samps, SAMPS_SIZE);
+        if(read != SAMPS_SIZE) {
+            if(sf_error(sf)) {
+                fprintf(stderr, "Read error: %d\n", sf_error(sf));
                 goto fail;
             }
         }
 
-        for(int i = 0; i < read; i++) {
+        for(int i = 0; i < read; i += sfinfo.channels) {
             resamp_rrrf_execute(rs, samps[i], resamp, &num_written);
+
             for(int j = 0; j < num_written; j++) {
                 float re, im;
                 float mark_mag, space_mag, data_mag;
@@ -337,7 +369,7 @@ int main(int argc, char **argv) {
             }
         }
 
-        if(read != ASIZE(samps)) {
+        if(read != SAMPS_SIZE) {
             printf("Done\n");
             break;
         }
@@ -346,6 +378,7 @@ int main(int argc, char **argv) {
     gettimeofday(&tv_done, NULL);
 
     float samp_per_sec = idx / ((tv_done.tv_sec + tv_done.tv_usec / 1e6) - (tv_start.tv_sec + tv_start.tv_usec / 1e6));
+    printf("Processed %zu samples\n", idx);
     printf("%d samp / sec\n", (int)samp_per_sec);
     printf("%.1fx speed\n", samp_per_sec / input_rate);
     printf("%zu packets\n", num_packets);
@@ -354,9 +387,14 @@ int main(int argc, char **argv) {
     rc = 0;
 
 fail:
-    if(fp) {
-        fclose(fp);
-        fp = NULL;
+    if(samps != NULL) {
+        free(samps);
+        samps = NULL;
+    }
+
+    if(sf) {
+        sf_close(sf);
+        sf = NULL;
     }
 
     if(fout) {
