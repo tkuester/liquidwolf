@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <string.h>
+#include <math.h>
 
 #include "util.h"
 
@@ -42,4 +44,42 @@ ssize_t bit_buff_to_bytes(const float *samps, size_t samp_len,
 
     if(quality) *quality = (1.0f * qual / samp_len);
     return out_idx;
+}
+
+/**
+ * finds the min/max value of an array
+ */
+void minmax(float *buff, size_t len, float *min, float *max) {
+    *max = -INFINITY;
+    *min = INFINITY;
+
+    for(size_t i = 0; i < len; i++) {
+        if(buff[i] > *max) *max = buff[i];
+        if(buff[i] < *min) *min = buff[i];
+    }
+}
+
+/**
+ * Simple median filter, useful for knocking out glitches
+ * and spurious noise
+ */
+float median(float *buff, float *scratch, size_t len) {
+    memcpy(scratch, buff, sizeof(float) * len);
+
+    size_t i, j;
+    float key;
+
+    // Insertion sort
+    for(i = 1; i < len; i++) {
+        key = scratch[i];
+        j = i - 1;
+
+        while(j >= 0 && scratch[j] > key) {
+            scratch[j+1] = scratch[j];
+            j -= 1;
+        }
+        scratch[j + 1] = key;
+    }
+
+    return scratch[len / 2];
 }

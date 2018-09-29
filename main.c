@@ -7,49 +7,7 @@
 #include <sndfile.h>
 
 #include "hdlc.h"
-
-#define ASIZE(x) (sizeof(x) / sizeof(x[0]))
-
-void minmax(float *buff, size_t len, float *min, float *max);
-float median(float *buff, float *scratch, size_t len);
-
-/**
- * finds the min/max value of an array
- */
-void minmax(float *buff, size_t len, float *min, float *max) {
-    *max = -INFINITY;
-    *min = INFINITY;
-
-    for(size_t i = 0; i < len; i++) {
-        if(buff[i] > *max) *max = buff[i];
-        if(buff[i] < *min) *min = buff[i];
-    }
-}
-
-/**
- * Simple median filter, useful for knocking out glitches
- * and spurious noise
- */
-float median(float *buff, float *scratch, size_t len) {
-    memcpy(scratch, buff, sizeof(float) * len);
-
-    size_t i, j;
-    float key;
-
-    // Insertion sort
-    for(i = 1; i < len; i++) {
-        key = scratch[i];
-        j = i - 1;
-
-        while(j >= 0 && scratch[j] > key) {
-            scratch[j+1] = scratch[j];
-            j -= 1;
-        }
-        scratch[j + 1] = key;
-    }
-
-    return scratch[len / 2];
-}
+#include "util.h"
 
 int main(int argc, char **argv) {
     int rc = 1;
