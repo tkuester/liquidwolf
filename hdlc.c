@@ -74,7 +74,6 @@ bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
         } else {
             state->buff_idx = 0;
             state->in_packet = false;
-            fprintf(stderr, "Uhoh, squelch got left open.\n");
         }
     }
 

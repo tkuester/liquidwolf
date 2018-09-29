@@ -10,25 +10,30 @@ const int baud_rate = 1200;
 const int mark = 1200;
 const int space = 2200;
 const int output_rate = 13200; // (1200: 11, 2200: 6)
+#define win_sz (output_rate / baud_rate)
 
 int input_rate;
 
-resamp_rrrf rs, sps2 = NULL;
+resamp_rrrf rs = NULL, sps2 = NULL;
 
-firfilt_rrrf mark_cs, mark_sn = NULL;
-firfilt_rrrf space_cs, space_sn = NULL;
+firfilt_rrrf mark_cs = NULL, mark_sn = NULL;
+firfilt_rrrf space_cs = NULL, space_sn = NULL;
 
-firfilt_rrrf mark_filt, space_filt = NULL;
+firfilt_rrrf mark_filt = NULL, space_filt = NULL;
 
 symsync_rrrf sync = NULL;
 hdlc_state_t hdlc;
 
 int buff_idx;
-float *cos_mark, *sin_mark, *cos_space, *sin_space = NULL;
-float *mark_buff, *space_buff = NULL;
+float *cos_mark = NULL, *sin_mark = NULL, *cos_space = NULL, *sin_space = NULL;
+float *mark_buff = NULL, *space_buff = NULL;
 float *data_filt_taps = NULL;
 float mark_max, mark_min, space_max, space_min;
+float mark_scale = 1.0;
+float space_scale = 1.0;
 float last_bit;
+
+FILE *out = NULL;
 
 const float sync_search[] = {-0.327787071466, -0.863485574722, -0.846625030041, -0.237066477537,
                              0.509203135967, 0.92675024271, 0.967760741711, 0.90081679821,
@@ -48,14 +53,13 @@ bool dsp_init(int _input_rate) {
     // Stage 1: Resample input to 13200 Hz
     float r = 1.0f * output_rate / input_rate;
     unsigned int h_len = 13;
-    float bw = 1.0f * baud_rate / output_rate;
+    float bw = 4.0f * baud_rate / input_rate;
     float slsl = 60.0f;
     unsigned int npfb = 32;
     rs = resamp_rrrf_create(r, h_len, bw, slsl, npfb);
     if(rs == NULL) goto fail;
 
     // Stage 2: Generate filter taps for mark/space detection
-    const int win_sz = (int)(ceil)(1.0f * output_rate / baud_rate);
     cos_mark = malloc(sizeof(float) * win_sz);
     sin_mark = malloc(sizeof(float) * win_sz);
     cos_space = malloc(sizeof(float) * win_sz);
@@ -63,7 +67,7 @@ bool dsp_init(int _input_rate) {
     if(!cos_mark || !sin_mark || !cos_space || !sin_space) goto fail;
 
     for(int i = 0; i < win_sz; i++) {
-        float win = sin(1.0f * M_PI * i / (win_sz - 1));
+        float win = sin(1.0f * M_PI * i / win_sz);
         cos_mark[i] = cosf(2 * M_PI * mark * i / output_rate) * win;
         sin_mark[i] = sinf(2 * M_PI * mark * i / output_rate) * win;
         cos_space[i] = cosf(2 * M_PI * space * i / output_rate) * win;
@@ -86,8 +90,8 @@ bool dsp_init(int _input_rate) {
     mark_buff = malloc(sizeof(float) * win_sz * 9);
     space_buff = malloc(sizeof(float) * win_sz * 9);
     if(!mark_buff || !space_buff) goto fail;
-    memset(mark_buff, 0, sizeof(mark_buff));
-    memset(space_buff, 0, sizeof(space_buff));
+    memset(mark_buff, 0, sizeof(float) * win_sz * 9);
+    memset(space_buff, 0, sizeof(float) * win_sz * 9);
 
     // Stage 3: 1200 Hz filter for mark/space channel
     float As = 60.0f;
@@ -124,6 +128,9 @@ bool dsp_init(int _input_rate) {
     last_bit = 0;
     hdlc_init(&hdlc);
 
+    out = fopen("out.f32", "w");
+    if(!out) goto fail;
+
     return true;
 
 fail:
@@ -132,15 +139,13 @@ fail:
 }
 
 bool dsp_process(float samp) {
-    int num_written;
+    unsigned int num_written;
     float resamp[3];
 
     // Stage 1: Resample to 13200 Hz
     resamp_rrrf_execute(rs, samp, resamp, &num_written);
 
     for(int j = 0; j < num_written; j++) {
-        float scale;
-
         // Stage 2: Update re/im correlators for mark/space
         float re, im;
         float mark_mag, space_mag;
@@ -165,27 +170,33 @@ bool dsp_process(float samp) {
         space_buff[buff_idx] = space_mag;
 
         buff_idx += 1;
-        buff_idx %= ASIZE(mark_buff);
+        buff_idx %= 9 * win_sz;
 
         // Stage 3.1: Calculate AGC scaling parameters
         if(buff_idx == 0) {
-            minmax(mark_buff, ASIZE(mark_buff), &mark_min, &mark_max);
-            minmax(space_buff, ASIZE(space_buff), &space_min, &space_max);
+            minmax(mark_buff, 9 * 11, &mark_min, &mark_max);
+            mark_scale = 1.0 / (mark_max - mark_min);
+            mark_scale = (mark_scale > 10 ? 10 : mark_scale);
+
+            minmax(space_buff, 9 * 11, &space_min, &space_max);
+            space_scale = 1.0 / (space_max - space_min);
+            space_scale = (space_scale > 10 ? 10 : space_scale);
         }
 
         // Scale waveforms
-        float mark_scale = 1.0 / (mark_max - mark_min);
-        scale = (mark_scale > 10 ? 10 : mark_scale);
         mark_mag -= (mark_max + mark_min) / 2;
         mark_mag *= mark_scale;
 
-        float space_scale = 1.0 / (space_max - space_min);
-        scale = (space_scale > 10 ? 10 : space_scale);
         space_mag -= (space_max + space_min) / 2;
         space_mag *= space_scale;
 
         // Data = space - mark, differential waveforms
         float data_mag = space_mag - mark_mag;
+
+        fwrite(&resamp[j], sizeof(float), 1, out);
+        fwrite(&mark_mag, sizeof(float), 1, out);
+        fwrite(&space_mag, sizeof(float), 1, out);
+        fwrite(&data_mag, sizeof(float), 1, out);
 
         // Stage 4: Resample to 4 sps
         unsigned int num_written2;
@@ -193,6 +204,7 @@ bool dsp_process(float samp) {
         if(num_written2 == 0) continue;
 
         // Stage 4.1 - Calculate correlation of flag (TODO: firfilt?)
+        /*
         sync_buff[sync_buff_idx] = data_mag;
         sync_buff_idx = (sync_buff_idx + 1) % ASIZE(sync_buff);
         float sync_buff_sum = 0;
@@ -201,6 +213,7 @@ bool dsp_process(float samp) {
         }
         sync_buff_sum /= 26.0f;
         sync_buff_sum = fabs(sync_buff_sum);
+        */
 
         // Stage 5 - Clock Recovery
         float bit;
@@ -214,7 +227,6 @@ bool dsp_process(float samp) {
             nrzi *= -1;
         }
         last_bit = bit;
-        bit = nrzi;
 
         size_t frame_len;
         bool got_frame = hdlc_execute(&hdlc, nrzi, &frame_len);
@@ -256,4 +268,6 @@ void dsp_destroy(void) {
     if(mark_buff) free(mark_buff);
     if(space_buff) free(space_buff);
     if(data_filt_taps) free(data_filt_taps);
+
+    if(out) fclose(out);
 }
