@@ -1,6 +1,7 @@
 #ifndef _UTIL_H
 #define _UTIL_H
 
+#include <stdio.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <sys/types.h>
@@ -16,5 +17,7 @@ ssize_t bit_buff_to_bytes(const float *samps, size_t samp_len,
 void minmax(const float *buff, size_t len, float *min, float *max);
 
 float median(const float *buff, float *scratch, size_t len);
+
+void normalize(float *buff, size_t len);
 
 #endif

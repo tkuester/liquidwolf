@@ -83,3 +83,9 @@ float median(const float *buff, float *scratch, size_t len) {
 
     return scratch[len / 2];
 }
+
+void normalize(float *buff, size_t len) {
+    float sum = 0;
+    for(size_t i = 0; i < len; i++) sum += buff[i];
+    for(size_t i = 0; i < len; i++) buff[i] /= sum;
+}
