@@ -20,6 +20,7 @@ firfilt_rrrf mark_cs = NULL, mark_sn = NULL;
 firfilt_rrrf space_cs = NULL, space_sn = NULL;
 
 firfilt_rrrf mark_filt = NULL, space_filt = NULL;
+firfilt_rrrf flag_corr = NULL;
 
 symsync_rrrf sync = NULL;
 hdlc_state_t hdlc;
@@ -35,18 +36,6 @@ float space_scale = 1.0;
 float last_bit;
 
 FILE *out = NULL;
-
-const float sync_search[] = {-0.327787071466, -0.863485574722, -0.846625030041, -0.237066477537,
-                             0.509203135967, 0.92675024271, 0.967760741711, 0.90081679821,
-                             0.890751242638, 0.906954228878, 0.90988856554, 0.908331274986,
-                             0.909126937389, 0.910285055637, 0.910628736019, 0.910407721996,
-                             0.910471260548, 0.911236822605, 0.911468148232, 0.911164462566,
-                             0.91139292717, 0.912554085255, 0.912695467472, 0.911213994026,
-                             0.910359799862, 0.912545442581, 0.908676445484, 0.896155297756,
-                             0.916578114033, 0.974584817886, 0.887850761414, 0.431282520294,
-                             -0.297088474035, -0.840644657612, -0.802261173725, -0.211893334985};
-float sync_buff[ASIZE(sync_search)];
-size_t sync_buff_idx;
 
 bool dsp_init(int _input_rate) {
     input_rate = _input_rate;
@@ -118,8 +107,19 @@ bool dsp_init(int _input_rate) {
     sps2 = resamp_rrrf_create(r2, h_len, bw2, slsl, npfb);
     if(!sps2) goto fail;
 
-    memset(sync_buff, 0, sizeof(sync_buff));
-    sync_buff_idx = 0;
+    float sync_search[] = {-0.327787071466, -0.863485574722, -0.846625030041, -0.237066477537,
+                           0.509203135967, 0.92675024271, 0.967760741711, 0.90081679821,
+                           0.890751242638, 0.906954228878, 0.90988856554, 0.908331274986,
+                           0.909126937389, 0.910285055637, 0.910628736019, 0.910407721996,
+                           0.910471260548, 0.911236822605, 0.911468148232, 0.911164462566,
+                           0.91139292717, 0.912554085255, 0.912695467472, 0.911213994026,
+                           0.910359799862, 0.912545442581, 0.908676445484, 0.896155297756,
+                           0.916578114033, 0.974584817886, 0.887850761414, 0.431282520294,
+                           -0.297088474035, -0.840644657612, -0.802261173725, -0.211893334985};
+
+    normalize(sync_search, ASIZE(sync_search));
+    flag_corr = firfilt_rrrf_create(sync_search, ASIZE(sync_search));
+    if(!flag_corr) goto fail;
 
     // Stage 5: Clock Recovery
     sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, sps, 7, (4.0 * baud_rate / output_rate), 32);
@@ -194,10 +194,12 @@ bool dsp_process(float samp) {
         // Data = space - mark, differential waveforms
         float data_mag = space_mag - mark_mag;
 
+        /*
         fwrite(&resamp[j], sizeof(float), 1, out);
         fwrite(&mark_mag, sizeof(float), 1, out);
         fwrite(&space_mag, sizeof(float), 1, out);
         fwrite(&data_mag, sizeof(float), 1, out);
+        */
 
         // Stage 4: Resample to 4 sps
         unsigned int num_written2;
@@ -205,16 +207,12 @@ bool dsp_process(float samp) {
         if(num_written2 == 0) continue;
 
         // Stage 4.1 - Calculate correlation of flag (TODO: firfilt?)
-        /*
-        sync_buff[sync_buff_idx] = data_mag;
-        sync_buff_idx = (sync_buff_idx + 1) % ASIZE(sync_buff);
-        float sync_buff_sum = 0;
-        for(size_t _sb = 0; _sb < ASIZE(sync_buff); _sb++) {
-            sync_buff_sum += sync_search[_sb] * sync_buff[(sync_buff_idx + _sb) % ASIZE(sync_buff)];
-        }
-        sync_buff_sum /= 26.0f;
-        sync_buff_sum = fabs(sync_buff_sum);
-        */
+        float flag_corr_mag;
+        firfilt_rrrf_push(flag_corr, data_mag);
+        firfilt_rrrf_execute(flag_corr, &flag_corr_mag);
+
+        fwrite(&data_mag, sizeof(float), 1, out);
+        fwrite(&flag_corr_mag, sizeof(float), 1, out);
 
         // Stage 5 - Clock Recovery
         float bit;
@@ -260,6 +258,7 @@ void dsp_destroy(void) {
     if(space_sn) firfilt_rrrf_destroy(space_sn);
     if(mark_filt) firfilt_rrrf_destroy(mark_filt);
     if(space_filt) firfilt_rrrf_destroy(space_filt);
+    if(flag_corr) firfilt_rrrf_destroy(flag_corr);
     if(sync) symsync_rrrf_destroy(sync);
 
     if(cos_mark) free(cos_mark);
