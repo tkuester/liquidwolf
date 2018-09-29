@@ -49,7 +49,7 @@ ssize_t bit_buff_to_bytes(const float *samps, size_t samp_len,
 /**
  * finds the min/max value of an array
  */
-void minmax(float *buff, size_t len, float *min, float *max) {
+void minmax(const float *buff, size_t len, float *min, float *max) {
     *max = -INFINITY;
     *min = INFINITY;
 
@@ -63,7 +63,7 @@ void minmax(float *buff, size_t len, float *min, float *max) {
  * Simple median filter, useful for knocking out glitches
  * and spurious noise
  */
-float median(float *buff, float *scratch, size_t len) {
+float median(const float *buff, float *scratch, size_t len) {
     memcpy(scratch, buff, sizeof(float) * len);
 
     size_t i, j;
