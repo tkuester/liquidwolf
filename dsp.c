@@ -57,7 +57,8 @@ bool dsp_init(int _input_rate) {
     if(!cos_mark || !sin_mark || !cos_space || !sin_space) goto fail;
 
     for(int i = 0; i < win_sz; i++) {
-        float win = sin(1.0f * M_PI * i / win_sz);
+        //float win = sin(1.0f * M_PI * i / win_sz);
+        float win = 1.0;
         cos_mark[i] = cosf(2 * M_PI * mark * i / output_rate) * win;
         sin_mark[i] = sinf(2 * M_PI * mark * i / output_rate) * win;
         cos_space[i] = cosf(2 * M_PI * space * i / output_rate) * win;
