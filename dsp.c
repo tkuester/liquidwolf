@@ -34,6 +34,7 @@ float mark_max, mark_min, space_max, space_min;
 float mark_scale = 1.0;
 float space_scale = 1.0;
 float last_bit;
+float *resamp_buff;
 
 FILE *out = NULL;
 
@@ -48,6 +49,9 @@ bool dsp_init(int _input_rate) {
     unsigned int npfb = 32;
     rs = resamp_rrrf_create(r, h_len, bw, slsl, npfb);
     if(rs == NULL) goto fail;
+
+    resamp_buff = (float *)malloc((int)ceil(r) * sizeof(float));
+    if(resamp_buff == NULL) goto fail;
 
     // Stage 2: Generate filter taps for mark/space detection
     cos_mark = malloc(sizeof(float) * win_sz);
@@ -105,6 +109,7 @@ bool dsp_init(int _input_rate) {
     const int sps = 4;
     float bw2 = 2.0 * baud_rate / output_rate;
     float r2 = (float)sps * baud_rate / output_rate;
+    if(r2 > 1) goto fail; // Logic in stage 4 expects no more than 1 output sample
     sps2 = resamp_rrrf_create(r2, h_len, bw2, slsl, npfb);
     if(!sps2) goto fail;
 
@@ -141,25 +146,24 @@ fail:
 }
 
 bool dsp_process(float samp) {
-    unsigned int num_written;
-    float resamp[3];
+    unsigned int num_resamp;
 
     // Stage 1: Resample to 13200 Hz
-    resamp_rrrf_execute(rs, samp, resamp, &num_written);
+    resamp_rrrf_execute(rs, samp, resamp_buff, &num_resamp);
 
-    for(int j = 0; j < num_written; j++) {
+    for(int j = 0; j < num_resamp; j++) {
         // Stage 2: Update re/im correlators for mark/space
         float re, im;
         float mark_mag, space_mag;
-        firfilt_rrrf_push(mark_cs, resamp[j]);
+        firfilt_rrrf_push(mark_cs, resamp_buff[j]);
         firfilt_rrrf_execute(mark_cs, &re);
-        firfilt_rrrf_push(mark_sn, resamp[j]);
+        firfilt_rrrf_push(mark_sn, resamp_buff[j]);
         firfilt_rrrf_execute(mark_sn, &im);
         mark_mag = sqrtf(re * re + im * im);
 
-        firfilt_rrrf_push(space_cs, resamp[j]);
+        firfilt_rrrf_push(space_cs, resamp_buff[j]);
         firfilt_rrrf_execute(space_cs, &re);
-        firfilt_rrrf_push(space_sn, resamp[j]);
+        firfilt_rrrf_push(space_sn, resamp_buff[j]);
         firfilt_rrrf_execute(space_sn, &im);
         space_mag = sqrtf(re * re + im * im);
 
@@ -196,7 +200,7 @@ bool dsp_process(float samp) {
         float data_mag = space_mag - mark_mag;
 
         /*
-        fwrite(&resamp[j], sizeof(float), 1, out);
+        fwrite(&resamp_buff[j], sizeof(float), 1, out);
         fwrite(&mark_mag, sizeof(float), 1, out);
         fwrite(&space_mag, sizeof(float), 1, out);
         fwrite(&data_mag, sizeof(float), 1, out);
@@ -207,7 +211,7 @@ bool dsp_process(float samp) {
         resamp_rrrf_execute(sps2, data_mag, &data_mag, &num_written2);
         if(num_written2 == 0) continue;
 
-        // Stage 4.1 - Calculate correlation of flag (TODO: firfilt?)
+        // Stage 4.1 - Calculate correlation of flag
         float flag_corr_mag;
         firfilt_rrrf_push(flag_corr, data_mag);
         firfilt_rrrf_execute(flag_corr, &flag_corr_mag);
@@ -269,6 +273,7 @@ void dsp_destroy(void) {
     if(mark_buff) free(mark_buff);
     if(space_buff) free(space_buff);
     if(data_filt_taps) free(data_filt_taps);
+    if(resamp_buff) free(resamp_buff);
 
     if(out) fclose(out);
 }
