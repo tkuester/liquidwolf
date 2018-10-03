@@ -6,7 +6,7 @@
 /**
  * Prints a file to the given file pointer
  */
-void dump_pkt(FILE *fp, const ax25_pkt_t *pkt) {
+void ax25_pkt_dump(FILE *fp, const ax25_pkt_t *pkt) {
     if(pkt == NULL) return;
 
     fprintf(fp, "%s-%d (%s) -> %s-%d (%s):",
@@ -37,7 +37,7 @@ void dump_pkt(FILE *fp, const ax25_pkt_t *pkt) {
  * Returns:
  * 0 on success
  */
-int unpack_ax25(ax25_pkt_t *pkt, const uint8_t *buff, size_t len) {
+int ax25_pkt_unpack(ax25_pkt_t *pkt, const uint8_t *buff, size_t len) {
     int err = 0;
     size_t pos = 0;
     bool more_addr;
@@ -49,17 +49,17 @@ int unpack_ax25(ax25_pkt_t *pkt, const uint8_t *buff, size_t len) {
     memset(pkt, 0, sizeof(ax25_pkt_t));
 
     // Unpack dst and src addresses
-    more_addr = unpack_addr(&pkt->dst, &buff[pos]); pos += 7;
+    more_addr = ax25_addr_unpack(&pkt->dst, &buff[pos]); pos += 7;
     if(!more_addr) { err = 4; goto fail; }
 
-    more_addr = unpack_addr(&pkt->src, &buff[pos]); pos += 7;
+    more_addr = ax25_addr_unpack(&pkt->src, &buff[pos]); pos += 7;
 
     // Unpack up to two repeaters
     for(size_t i = 0; i < MAX_NUM_ADDRS; i++) {
         if(!more_addr) break;
 
         if((pos + 7) > len) { err = 5; goto fail; }
-        more_addr = unpack_addr(&pkt->rpt[i], &buff[pos]); pos += 7;
+        more_addr = ax25_addr_unpack(&pkt->rpt[i], &buff[pos]); pos += 7;
         pkt->num_rpt += 1;
     }
     if(more_addr) { err = 6; goto fail; }
@@ -89,12 +89,12 @@ fail:
  *
  * Params:
  * addr - The addr to fill
- * buff - The buffer to receive from
+ * buff - The buffer to receive from, must be len >= 7
  *
  * Returns:
  * true if there are more addresses to parse
  */
-bool unpack_addr(ax25_addr_t *addr, const uint8_t *buff) {
+bool ax25_addr_unpack(ax25_addr_t *addr, const uint8_t *buff) {
     uint8_t byte;
     size_t i;
 
