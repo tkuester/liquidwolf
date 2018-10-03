@@ -9,9 +9,37 @@
 
 #include "dsp.h"
 #include "hdlc.h"
+#include "ax25.h"
 #include "util.h"
 
 #define SAMPS_SIZE (1024)
+
+bool crc16_ccitt(const float *buff, size_t len) {
+    // TODO: Min frame length: 136 bits?
+    if(len < 32) return false;
+    if((len % 8) != 0) return false;
+    if(len > (4096 * 8)) return false;
+
+    uint8_t data[4096];
+    float qual;
+    ax25_pkt_t pkt;
+
+    size_t pktlen = bit_buff_to_bytes(buff, len, data, 4096, &qual);
+
+    uint16_t ret = hdlc_crc(data, pktlen - 2);
+    uint16_t crc = data[pktlen - 1] << 8 | data[pktlen - 2];
+
+    if(ret == crc) {
+        int unpacked_ok = ax25_pkt_unpack(&pkt, data, pktlen - 2);
+        if(unpacked_ok == 0) {
+            printf("Quality: %.2f\n", qual);
+            hexdump(stdout, data, pktlen);
+            ax25_pkt_dump(stdout, &pkt);
+            printf("================================\n");
+        }
+    }
+    return ret == crc;
+}
 
 int main(int argc, char **argv) {
     int rc = 1;

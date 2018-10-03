@@ -6,13 +6,24 @@
 #include "hdlc.h"
 #include "ax25.h"
 
-void hdlc_debug(hdlc_state_t *state) {
-    printf("hdlc_state(in_packet=%5s, one_count=%3zu, buff_idx=%3zu)\n",
-            state->in_packet ? "true" : "false",
-            state->one_count,
-            state->buff_idx);
+/**
+ * Utility function to print the state of the HDLC stream
+ *
+ * fp: The stream to print the message
+ * state: The state to debug
+ */
+void hdlc_debug(FILE *fp, hdlc_state_t *state) {
+    fprintf(fp, "hdlc_state(in_packet=%5s, one_count=%3zu, buff_idx=%3zu)\n",
+                 state->in_packet ? "true" : "false",
+                 state->one_count,
+                 state->buff_idx);
 }
 
+/**
+ * Initializes the HDLC state structure
+ *
+ * state: The structure to init
+ */
 void hdlc_init(hdlc_state_t *state) {
     if(state == NULL) return;
 
@@ -21,6 +32,15 @@ void hdlc_init(hdlc_state_t *state) {
     state->buff_idx = 0;
 }
 
+/**
+ * Processes a sample to determine if it completes an HDLC frame
+ *
+ * state: The struct which maintains state between calls
+ * samp: The sample to process
+ * len: The number of samples in the frame (if EOF detected)
+ *
+ * Returns: true if a frame was detected
+ */
 bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
     if(state == NULL) return false;
 
@@ -28,14 +48,19 @@ bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
     if(samp >= 0) {
         state->one_count += 1;
 
-        // Illegal state
+        // Illegal state: should not receive more than 6 ones in a row
         if(state->one_count > 6) {
             state->in_packet = false;
             return false;
-        } else if(state->one_count == 6) {
+        }
+
+        // Receiving our 6th consecutive one
+        else if(state->one_count == 6) {
+            // Hop out of the frame
             if(state->in_packet) {
                 state->in_packet = false;
 
+                // Do we have bits to return? Or only two flags back to back?
                 if(state->buff_idx > 6) {
                     if(len != NULL) *len = state->buff_idx - 6;
                     state->buff_idx = 0;
@@ -49,6 +74,7 @@ bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
 
     // Logic 0
     else {
+        // Temporarily store the number of ones
         size_t _one_count = state->one_count;
 
         // Reset the # of consecutive 1's
@@ -67,6 +93,8 @@ bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
         }
     }
 
+    // Fell through to here. No start/end of frame/stuffed bit detected
+    // so log the sample to the buffer
     if(state->in_packet) {
         if(state->buff_idx < HDLC_SAMP_BUFF_LEN) {
             state->samps[state->buff_idx] = samp;
@@ -80,37 +108,19 @@ bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
     return false;
 }
 
-bool crc16_ccitt(const float *buff, size_t len) {
-    // TODO: Min frame length: 136 bits?
-    if(len < 32) return false;
-    if((len % 8) != 0) return false;
-    if(len > (4096 * 8)) return false;
-
-    uint8_t data[4096];
-    float qual;
-    ax25_pkt_t pkt;
-
-    size_t pktlen = bit_buff_to_bytes(buff, len, data, 4096, &qual);
-
-    uint16_t ret = calc_crc(data, pktlen - 2);
-    uint16_t crc = data[pktlen - 1] << 8 | data[pktlen - 2];
-
-    if(ret == crc) {
-        int unpacked_ok = ax25_pkt_unpack(&pkt, data, pktlen - 2);
-        if(unpacked_ok == 0) {
-            printf("Quality: %.2f\n", qual);
-            hexdump(stdout, data, pktlen);
-            ax25_pkt_dump(stdout, &pkt);
-            printf("================================\n");
-        }
-    }
-    return ret == crc;
-}
-
 /**
+ * Calculates the HDLC checksum for a block of bytes. The buffer and length
+ * should not include the checksum.
+ *
  * Thanks gnuradio. *yoink*
+ *
+ * data: The buffer of data
+ * len: The number of bytes in the buffer
+ *
+ * Returns:
+ * uin16_t - The checksum
  */
-uint16_t calc_crc(uint8_t *data, size_t len) {
+uint16_t hdlc_crc(uint8_t *data, size_t len) {
     unsigned int POLY=0x8408; //reflected 0x1021
     unsigned short crc=0xFFFF;
     for(size_t i=0; i<len; i++) {
