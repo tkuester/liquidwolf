@@ -1,10 +1,6 @@
 #include <stdio.h>
-#include <string.h>
-#include <math.h>
 
-#include "util.h"
 #include "hdlc.h"
-#include "ax25.h"
 
 /**
  * Utility function to print the state of the HDLC stream
@@ -131,19 +127,4 @@ uint16_t hdlc_crc(uint8_t *data, size_t len) {
         }
     }
     return crc ^ 0xFFFF;
-}
-
-void flip_smallest(float *data, size_t len) {
-    float min = INFINITY;
-    size_t min_idx = 0;
-
-    for(size_t j = 0; j < len; j++) {
-        if(fabs(data[j]) < min) {
-            min_idx = j;
-            min = fabs(data[j]);
-        }
-    }
-
-    data[min_idx] *= -1;
-    data[min_idx] += (data[min_idx] >= 0 ? 1 : -1);
 }

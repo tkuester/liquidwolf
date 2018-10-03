@@ -14,6 +14,21 @@
 
 #define SAMPS_SIZE (1024)
 
+void flip_smallest(float *data, size_t len) {
+    float min = INFINITY;
+    size_t min_idx = 0;
+
+    for(size_t j = 0; j < len; j++) {
+        if(fabs(data[j]) < min) {
+            min_idx = j;
+            min = fabs(data[j]);
+        }
+    }
+
+    data[min_idx] *= -1;
+    data[min_idx] += (data[min_idx] >= 0 ? 1 : -1);
+}
+
 bool crc16_ccitt(const float *buff, size_t len) {
     // TODO: Min frame length: 136 bits?
     if(len < 32) return false;

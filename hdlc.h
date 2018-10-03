@@ -5,11 +5,8 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+// TODO: Make this dynamic?
 #define HDLC_SAMP_BUFF_LEN ((256 + 10) * 8)
-
-#define FCSINIT 0xFFFF
-#define FCSGOOD 0xF0B8
-#define FCSSIZE 2 /* 16 bit FCS */ 
 
 typedef struct {
     bool in_packet;
@@ -21,7 +18,6 @@ typedef struct {
 void hdlc_debug(FILE *fp, hdlc_state_t *state);
 void hdlc_init(hdlc_state_t *state);
 bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len);
-
 uint16_t hdlc_crc(uint8_t *data, size_t len);
-void flip_smallest(float *data, size_t len);
+
 #endif
