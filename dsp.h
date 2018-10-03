@@ -8,7 +8,7 @@
 #endif
 
 bool dsp_init(int _input_rate);
-bool dsp_process(float samp);
+bool dsp_process(float samp, float *out_bit);
 void dsp_destroy(void);
 
 #endif

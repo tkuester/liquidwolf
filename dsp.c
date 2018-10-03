@@ -1,10 +1,10 @@
+#include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
 #include <liquid/liquid.h>
 #include "dsp.h"
 #include "util.h"
-#include "hdlc.h"
 
 const int baud_rate = 1200;
 const int mark = 1200;
@@ -23,7 +23,6 @@ firfilt_rrrf mark_filt = NULL, space_filt = NULL;
 firfilt_rrrf flag_corr = NULL;
 
 symsync_rrrf sync = NULL;
-hdlc_state_t hdlc;
 
 int buff_idx;
 float *cos_mark = NULL, *sin_mark = NULL, *cos_space = NULL, *sin_space = NULL;
@@ -133,10 +132,12 @@ bool dsp_init(int _input_rate) {
 
     // Stage 6: Differential decoding, HDLC
     last_bit = 0;
-    hdlc_init(&hdlc);
 
+    /*
     out = fopen("out.f32", "w");
     if(!out) goto fail;
+    */
+    out = NULL;
 
     return true;
 
@@ -145,7 +146,7 @@ fail:
     return false;
 }
 
-bool dsp_process(float samp) {
+bool dsp_process(float samp, float *out_bit) {
     unsigned int num_resamp;
 
     // Stage 1: Resample to 13200 Hz
@@ -153,19 +154,21 @@ bool dsp_process(float samp) {
 
     for(int j = 0; j < num_resamp; j++) {
         // Stage 2: Update re/im correlators for mark/space
-        float re, im;
         float mark_mag, space_mag;
-        firfilt_rrrf_push(mark_cs, resamp_buff[j]);
-        firfilt_rrrf_execute(mark_cs, &re);
-        firfilt_rrrf_push(mark_sn, resamp_buff[j]);
-        firfilt_rrrf_execute(mark_sn, &im);
-        mark_mag = sqrtf(re * re + im * im);
+        {
+            float re, im;
+            firfilt_rrrf_push(mark_cs, resamp_buff[j]);
+            firfilt_rrrf_execute(mark_cs, &re);
+            firfilt_rrrf_push(mark_sn, resamp_buff[j]);
+            firfilt_rrrf_execute(mark_sn, &im);
+            mark_mag = sqrtf(re * re + im * im);
 
-        firfilt_rrrf_push(space_cs, resamp_buff[j]);
-        firfilt_rrrf_execute(space_cs, &re);
-        firfilt_rrrf_push(space_sn, resamp_buff[j]);
-        firfilt_rrrf_execute(space_sn, &im);
-        space_mag = sqrtf(re * re + im * im);
+            firfilt_rrrf_push(space_cs, resamp_buff[j]);
+            firfilt_rrrf_execute(space_cs, &re);
+            firfilt_rrrf_push(space_sn, resamp_buff[j]);
+            firfilt_rrrf_execute(space_sn, &im);
+            space_mag = sqrtf(re * re + im * im);
+        }
 
         // Stage 3: Filter mark signal
         firfilt_rrrf_push(mark_filt, mark_mag);
@@ -216,8 +219,10 @@ bool dsp_process(float samp) {
         firfilt_rrrf_push(flag_corr, data_mag);
         firfilt_rrrf_execute(flag_corr, &flag_corr_mag);
 
+        /*
         fwrite(&data_mag, sizeof(float), 1, out);
         fwrite(&flag_corr_mag, sizeof(float), 1, out);
+        */
 
         // Stage 5 - Clock Recovery
         float bit;
@@ -232,22 +237,8 @@ bool dsp_process(float samp) {
         }
         last_bit = bit;
 
-        size_t frame_len;
-        bool got_frame = hdlc_execute(&hdlc, nrzi, &frame_len);
-        if(!got_frame) continue;
-        if((frame_len % 8) != 0) continue; // Discard packets with non multiple of 8 len
-
-        bool got_pkt = false;
-        if(crc16_ccitt((float *)&hdlc.samps, frame_len)) {
-            got_pkt = true;
-        } else {
-            flip_smallest((float *)&hdlc.samps, frame_len);
-            if(crc16_ccitt((float *)&hdlc.samps, frame_len)) {
-                got_pkt = true;
-            }
-        }
-
-        return got_pkt;
+        if(out_bit) *out_bit = nrzi;
+        return true;
     }
 
     return false;

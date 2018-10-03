@@ -8,6 +8,7 @@
 #include <sndfile.h>
 
 #include "dsp.h"
+#include "hdlc.h"
 #include "util.h"
 
 #define SAMPS_SIZE (1024)
@@ -21,6 +22,8 @@ int main(int argc, char **argv) {
     SF_INFO sfinfo;
 
     float *samps = NULL;
+    hdlc_state_t hdlc;
+    hdlc_init(&hdlc);
 
     size_t num_packets = 0;
     size_t num_one_flip_packets = 0;
@@ -39,7 +42,12 @@ int main(int argc, char **argv) {
     }
 
     if(sfinfo.channels > 2) {
-        fprintf(stderr, "Sorry, can only work with 1 or 2 channel wav files\n");
+        fprintf(stderr, "WARNING: %d channels detected, only reading from ch 0\n", sfinfo.channels);
+        goto fail;
+    }
+
+    if(sfinfo.samplerate < 8000) {
+        fprintf(stderr, "ERROR: Sample rate must be at >=8000, is %d\n", sfinfo.samplerate);
         goto fail;
     }
     printf("Opened %s: %d Hz, %d chan\n", wavfile, sfinfo.samplerate, sfinfo.channels);
@@ -69,7 +77,26 @@ int main(int argc, char **argv) {
 
         for(int i = 0; i < read; i += sfinfo.channels) {
             idx += 1;
-            if(dsp_process(samps[i])) num_packets += 1;
+
+            float out_bit;
+            if(!dsp_process(samps[i], &out_bit)) continue;
+
+            size_t frame_len;
+            bool got_frame = hdlc_execute(&hdlc, out_bit, &frame_len);
+            if(!got_frame) continue;
+            if((frame_len % 8) != 0) continue; // Discard packets with non multiple of 8 len
+
+            bool got_pkt = false;
+            if(crc16_ccitt((float *)&hdlc.samps, frame_len)) {
+                got_pkt = true;
+            } else {
+                flip_smallest((float *)&hdlc.samps, frame_len);
+                if(crc16_ccitt((float *)&hdlc.samps, frame_len)) {
+                    got_pkt = true;
+                }
+            }
+
+            if(got_pkt) num_packets += 1;
         }
 
         if(read != SAMPS_SIZE) {
