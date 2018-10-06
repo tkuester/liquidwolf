@@ -94,7 +94,6 @@ bool do_you_wanna_build_a_packet(ax25_pkt_t *pkt, float *buff, size_t len) {
             printf("================================\n");
         }
     }
-
     return ret == crc;
 }
 
