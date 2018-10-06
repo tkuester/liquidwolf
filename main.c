@@ -29,7 +29,10 @@ void flip_smallest(float *data, size_t len) {
     data[min_idx] += (data[min_idx] >= 0 ? 1 : -1);
 }
 
-bool crc16_ccitt(const float *buff, size_t len) {
+bool do_you_wanna_build_a_packet(ax25_pkt_t *pkt, float *buff, size_t len) {
+    if(!pkt) return false;
+    if(!buff) return false;
+
     // TODO: Min frame length: 136 bits?
     if(len < 32) return false;
     if((len % 8) != 0) return false;
@@ -37,22 +40,61 @@ bool crc16_ccitt(const float *buff, size_t len) {
 
     uint8_t data[4096];
     float qual;
-    ax25_pkt_t pkt;
 
     size_t pktlen = bit_buff_to_bytes(buff, len, data, 4096, &qual);
 
     uint16_t ret = hdlc_crc(data, pktlen - 2);
     uint16_t crc = data[pktlen - 1] << 8 | data[pktlen - 2];
 
+    if(ret != crc) {
+        // Toggle 1 bit for the packet
+        for(size_t i = 0; i < pktlen; i++) {
+            for(size_t j = 0; j < 8; j++) {
+                data[i] ^= (1 << j);
+                ret = hdlc_crc(data, pktlen - 2);
+                crc = data[pktlen - 1] << 8 | data[pktlen - 2];
+                if(ret == crc) { i = pktlen; break; }
+                // If the flip didn't get us a packet, reset things
+                data[i] ^= (1 << j);
+            }
+        }
+
+        // Toggle 2 bits for the packet
+        for(size_t i = 0; i < pktlen; i++) {
+            for(size_t j = 0; j < 8; j++) {
+                // If we're not on the last byte
+                if(j == 7 && i != (pktlen - 1)) {
+                    // Toggle the bit between bytes
+                    data[i] ^= 0x80;
+                    data[i + 1] ^= 0x01;
+                } else {
+                    // xor-ing the last byte with 0x180 is the same
+                    // as xor-ing with 0x80
+                    data[i] ^= (3 << j);
+                }
+                ret = hdlc_crc(data, pktlen - 2);
+                crc = data[pktlen - 1] << 8 | data[pktlen - 2];
+                if(ret == crc) { i = pktlen; break; }
+                if(j == 7 && i != (pktlen - 1)) {
+                    data[i] ^= 0x80;
+                    data[i + 1] ^= 0x01;
+                } else {
+                    data[i] ^= (3 << j);
+                }
+            }
+        }
+    }
+
     if(ret == crc) {
-        int unpacked_ok = ax25_pkt_unpack(&pkt, data, pktlen - 2);
+        int unpacked_ok = ax25_pkt_unpack(pkt, data, pktlen - 2);
         if(unpacked_ok == 0) {
             printf("Quality: %.2f\n", qual);
             hexdump(stdout, data, pktlen);
-            ax25_pkt_dump(stdout, &pkt);
+            ax25_pkt_dump(stdout, pkt);
             printf("================================\n");
         }
     }
+
     return ret == crc;
 }
 
@@ -145,14 +187,8 @@ int main(int argc, char **argv) {
             if((frame_len % 8) != 0) continue; // Discard packets with non multiple of 8 len
 
             bool got_pkt = false;
-            if(crc16_ccitt((float *)&hdlc.samps, frame_len)) {
-                got_pkt = true;
-            } else {
-                flip_smallest((float *)&hdlc.samps, frame_len);
-                if(crc16_ccitt((float *)&hdlc.samps, frame_len)) {
-                    got_pkt = true;
-                }
-            }
+            ax25_pkt_t pkt;
+            got_pkt = do_you_wanna_build_a_packet(&pkt, (float *)&hdlc.samps, frame_len);
 
             if(got_pkt) num_packets += 1;
         }
