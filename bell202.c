@@ -115,7 +115,7 @@ bool bell202_init(bell202_t *modem, int input_rate) {
         if(!modem->sps2) goto fail;
 
         // Stage 5: Clock Recovery
-        modem->sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, sps, 7, (4.0 * baud_rate / output_rate), 32);
+        modem->sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, sps, 7, (4.0 * baud_rate / output_rate), npfb);
         if(!modem->sync) goto fail;
     }
 

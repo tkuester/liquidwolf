@@ -12,6 +12,10 @@
 #include "ax25.h"
 #include "util.h"
 
+#ifndef _LIQUIDWOLF_VERSION
+#define _LIQUIDWOLF_VERSION "(unversioned)"
+#endif
+
 #define SAMPS_SIZE (1024)
 
 void flip_smallest(float *data, size_t len) {
@@ -142,6 +146,8 @@ int main(int argc, char **argv) {
     size_t num_samps = 0;
     size_t num_packets = 0;
     size_t num_one_flip_packets = 0;
+
+    printf("LiquidWolf %s\n", _LIQUIDWOLF_VERSION);
 
     if(argc != 2) {
         fprintf(stderr, "Usage: %s in.wav\n", argv[0]);
