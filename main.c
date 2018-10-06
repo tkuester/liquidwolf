@@ -101,7 +101,8 @@ int main(int argc, char **argv) {
         goto fail;
     }
 
-    if(!dsp_init(sfinfo.samplerate)) {
+    bell202_t modem;
+    if(!bell202_init(&modem, sfinfo.samplerate)) {
         fprintf(stderr, "Unable to init DSP structures\n");
         goto fail;
     }
@@ -122,7 +123,7 @@ int main(int argc, char **argv) {
             idx += 1;
 
             float out_bit;
-            if(!dsp_process(samps[i], &out_bit)) continue;
+            if(!bell202_process(&modem, samps[i], &out_bit)) continue;
 
             size_t frame_len;
             bool got_frame = hdlc_execute(&hdlc, out_bit, &frame_len);
@@ -162,6 +163,6 @@ int main(int argc, char **argv) {
 fail:
     if(samps) free(samps);
     if(sf) sf_close(sf);
-    dsp_destroy();
+    bell202_destroy(&modem);
     return rc;
 }

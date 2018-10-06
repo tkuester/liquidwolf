@@ -11,106 +11,82 @@ const int mark = 1200;
 const int space = 2200;
 const int output_rate = 13200; // (1200: 11, 2200: 6)
 #define win_sz (output_rate / baud_rate)
-
-int input_rate;
-
-resamp_rrrf rs = NULL, sps2 = NULL;
-
-firfilt_rrrf mark_cs = NULL, mark_sn = NULL;
-firfilt_rrrf space_cs = NULL, space_sn = NULL;
-
-firfilt_rrrf mark_filt = NULL, space_filt = NULL;
-firfilt_rrrf flag_corr = NULL;
-
-symsync_rrrf sync = NULL;
-
-int buff_idx;
-float *cos_mark = NULL, *sin_mark = NULL, *cos_space = NULL, *sin_space = NULL;
-float *mark_buff = NULL, *space_buff = NULL;
-float *data_filt_taps = NULL;
 #define SCALE_WIN_LEN (9)
-float mark_max, mark_min, space_max, space_min;
-float mark_scale = 1.0;
-float space_scale = 1.0;
-float last_bit;
-float *resamp_buff;
 
-FILE *out = NULL;
+bool bell202_init(bell202_t *modem, int input_rate) {
+    if(modem == NULL) return false;
+    memset(modem, 0, sizeof(bell202_t));
 
-bool dsp_init(int _input_rate) {
-    input_rate = _input_rate;
+    modem->input_rate = input_rate;
 
     // Stage 1: Resample input to 13200 Hz
-    float r = 1.0f * output_rate / input_rate;
-    unsigned int h_len = 13;
-    float bw = 4.0f * baud_rate / input_rate;
-    float slsl = 60.0f;
-    unsigned int npfb = 32;
-    rs = resamp_rrrf_create(r, h_len, bw, slsl, npfb);
-    if(rs == NULL) goto fail;
+    {
+        float r = 1.0f * output_rate / modem->input_rate;
+        unsigned int h_len = 13;
+        float bw = 4.0f * baud_rate / modem->input_rate;
+        float slsl = 60.0f;
+        unsigned int npfb = 32;
+        modem->rs = resamp_rrrf_create(r, h_len, bw, slsl, npfb);
+        if(modem->rs == NULL) goto fail;
 
-    resamp_buff = (float *)malloc((int)ceil(r) * sizeof(float));
-    if(resamp_buff == NULL) goto fail;
+        modem->resamp_buff = (float *)malloc((int)ceil(r) * sizeof(float));
+        if(modem->resamp_buff == NULL) goto fail;
+    }
 
     // Stage 2: Generate filter taps for mark/space detection
-    cos_mark = malloc(sizeof(float) * win_sz);
-    sin_mark = malloc(sizeof(float) * win_sz);
-    cos_space = malloc(sizeof(float) * win_sz);
-    sin_space = malloc(sizeof(float) * win_sz);
-    if(!cos_mark || !sin_mark || !cos_space || !sin_space) goto fail;
+    modem->cos_mark = malloc(sizeof(float) * win_sz);
+    modem->sin_mark = malloc(sizeof(float) * win_sz);
+    modem->cos_space = malloc(sizeof(float) * win_sz);
+    modem->sin_space = malloc(sizeof(float) * win_sz);
+    if(!modem->cos_mark || !modem->sin_mark || !modem->cos_space || !modem->sin_space) goto fail;
 
     for(int i = 0; i < win_sz; i++) {
         //float win = sin(1.0f * M_PI * i / win_sz);
         float win = 1.0;
-        cos_mark[i] = cosf(2 * M_PI * mark * i / output_rate) * win;
-        sin_mark[i] = sinf(2 * M_PI * mark * i / output_rate) * win;
-        cos_space[i] = cosf(2 * M_PI * space * i / output_rate) * win;
-        sin_space[i] = sinf(2 * M_PI * space * i / output_rate) * win;
+        modem->cos_mark[i] = cosf(2 * M_PI * mark * i / output_rate) * win;
+        modem->sin_mark[i] = sinf(2 * M_PI * mark * i / output_rate) * win;
+        modem->cos_space[i] = cosf(2 * M_PI * space * i / output_rate) * win;
+        modem->sin_space[i] = sinf(2 * M_PI * space * i / output_rate) * win;
     }
-    normalize(cos_mark, win_sz);
-    normalize(sin_mark, win_sz);
-    normalize(cos_space, win_sz);
-    normalize(sin_space, win_sz);
+    normalize(modem->cos_mark, win_sz);
+    normalize(modem->sin_mark, win_sz);
+    normalize(modem->cos_space, win_sz);
+    normalize(modem->sin_space, win_sz);
 
-    mark_cs = firfilt_rrrf_create(cos_mark, win_sz);
-    mark_sn = firfilt_rrrf_create(sin_mark, win_sz);
-    space_cs = firfilt_rrrf_create(cos_space, win_sz);
-    space_sn = firfilt_rrrf_create(sin_space, win_sz);
-    if(!mark_cs || !mark_sn || !space_cs || !space_sn) goto fail;
+    modem->mark_cs = firfilt_rrrf_create(modem->cos_mark, win_sz);
+    modem->mark_sn = firfilt_rrrf_create(modem->sin_mark, win_sz);
+    modem->space_cs = firfilt_rrrf_create(modem->cos_space, win_sz);
+    modem->space_sn = firfilt_rrrf_create(modem->sin_space, win_sz);
+    if(!modem->mark_cs || !modem->mark_sn || !modem->space_cs || !modem->space_sn) goto fail;
 
     // Stage 3.1 - "AGC" scaling for mark/space channels
-    mark_max = space_max = 1;
-    mark_min = space_min = -1;
-    mark_buff = malloc(sizeof(float) * win_sz * SCALE_WIN_LEN);
-    space_buff = malloc(sizeof(float) * win_sz * SCALE_WIN_LEN);
-    if(!mark_buff || !space_buff) goto fail;
-    memset(mark_buff, 0, sizeof(float) * win_sz * SCALE_WIN_LEN);
-    memset(space_buff, 0, sizeof(float) * win_sz * SCALE_WIN_LEN);
+    modem->mark_max = modem->space_max = 1;
+    modem->mark_min = modem->space_min = -1;
+    modem->mark_buff = malloc(sizeof(float) * win_sz * SCALE_WIN_LEN);
+    modem->space_buff = malloc(sizeof(float) * win_sz * SCALE_WIN_LEN);
+    if(!modem->mark_buff || !modem->space_buff) goto fail;
+    memset(modem->mark_buff, 0, sizeof(float) * win_sz * SCALE_WIN_LEN);
+    memset(modem->space_buff, 0, sizeof(float) * win_sz * SCALE_WIN_LEN);
 
     // Stage 3: 1200 Hz filter for mark/space channel
-    float As = 60.0f;
-    float fc = (float)baud_rate / output_rate;
-    float ft = (float)baud_rate / output_rate;
-    float mu = 0.0f;
-    const unsigned int df_len = estimate_req_filter_len(ft, As);
-    data_filt_taps = malloc(sizeof(float) * df_len);
-    if(!data_filt_taps) goto fail;
+    {
+        float As = 60.0f;
+        float fc = (float)baud_rate / output_rate;
+        float ft = (float)baud_rate / output_rate;
+        float mu = 0.0f;
+        const unsigned int df_len = estimate_req_filter_len(ft, As);
 
-    // Design the 1200 Hz filter, scale to gain of 1.0 
-    liquid_firdes_kaiser(df_len, fc, As, mu, data_filt_taps);
-    normalize(data_filt_taps, df_len);
+        modem->data_filt_taps = malloc(sizeof(float) * df_len);
+        if(!modem->data_filt_taps) goto fail;
 
-    mark_filt = firfilt_rrrf_create(data_filt_taps, df_len); 
-    space_filt = firfilt_rrrf_create(data_filt_taps, df_len); 
-    if(!mark_filt || !space_filt) goto fail;
+        // Design the 1200 Hz filter, scale to gain of 1.0 
+        liquid_firdes_kaiser(df_len, fc, As, mu, modem->data_filt_taps);
+        normalize(modem->data_filt_taps, df_len);
 
-    // Stage 4: Resample to 4 sps for clock recovery
-    const int sps = 4;
-    float bw2 = 2.0 * baud_rate / output_rate;
-    float r2 = (float)sps * baud_rate / output_rate;
-    if(r2 > 1) goto fail; // Logic in stage 4 expects no more than 1 output sample
-    sps2 = resamp_rrrf_create(r2, h_len, bw2, slsl, npfb);
-    if(!sps2) goto fail;
+        modem->mark_filt = firfilt_rrrf_create(modem->data_filt_taps, df_len); 
+        modem->space_filt = firfilt_rrrf_create(modem->data_filt_taps, df_len); 
+        if(!modem->mark_filt || !modem->space_filt) goto fail;
+    }
 
     float sync_search[] = {-0.327787071466, -0.863485574722, -0.846625030041, -0.237066477537,
                            0.509203135967, 0.92675024271, 0.967760741711, 0.90081679821,
@@ -123,119 +99,132 @@ bool dsp_init(int _input_rate) {
                            -0.297088474035, -0.840644657612, -0.802261173725, -0.211893334985};
 
     normalize(sync_search, ASIZE(sync_search));
-    flag_corr = firfilt_rrrf_create(sync_search, ASIZE(sync_search));
-    if(!flag_corr) goto fail;
+    modem->flag_corr = firfilt_rrrf_create(sync_search, ASIZE(sync_search));
+    if(!modem->flag_corr) goto fail;
 
-    // Stage 5: Clock Recovery
-    sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, sps, 7, (4.0 * baud_rate / output_rate), 32);
-    if(!sync) goto fail;
+    // Stage 4: Resample to 4 sps for clock recovery
+    {
+        const int sps = 4;
+        unsigned int h_len = 13;
+        float bw2 = 2.0 * baud_rate / output_rate;
+        float slsl = 60.0;
+        float r2 = (float)sps * baud_rate / output_rate;
+        unsigned int npfb = 32;
+        if(r2 > 1) goto fail; // Logic in stage 4 expects no more than 1 output sample
+        modem->sps2 = resamp_rrrf_create(r2, h_len, bw2, slsl, npfb);
+        if(!modem->sps2) goto fail;
+
+        // Stage 5: Clock Recovery
+        modem->sync = symsync_rrrf_create_rnyquist(LIQUID_FIRFILT_RRC, sps, 7, (4.0 * baud_rate / output_rate), 32);
+        if(!modem->sync) goto fail;
+    }
 
     // Stage 6: Differential decoding, HDLC
-    last_bit = 0;
+    modem->last_bit = 0;
 
     /*
-    out = fopen("out.f32", "w");
-    if(!out) goto fail;
+    modem->out = fopen("out.f32", "w");
+    if(!modem->out) goto fail;
     */
-    out = NULL;
+    modem->out = NULL;
 
     return true;
 
 fail:
-    dsp_destroy();
+    bell202_destroy(modem);
     return false;
 }
 
-bool dsp_process(float samp, float *out_bit) {
+bool bell202_process(bell202_t *modem, float samp, float *out_bit) {
     unsigned int num_resamp;
 
     // Stage 1: Resample to 13200 Hz
-    resamp_rrrf_execute(rs, samp, resamp_buff, &num_resamp);
+    resamp_rrrf_execute(modem->rs, samp, modem->resamp_buff, &num_resamp);
 
     for(int j = 0; j < num_resamp; j++) {
         // Stage 2: Update re/im correlators for mark/space
         float mark_mag, space_mag;
         {
             float re, im;
-            firfilt_rrrf_push(mark_cs, resamp_buff[j]);
-            firfilt_rrrf_execute(mark_cs, &re);
-            firfilt_rrrf_push(mark_sn, resamp_buff[j]);
-            firfilt_rrrf_execute(mark_sn, &im);
+            firfilt_rrrf_push(modem->mark_cs, modem->resamp_buff[j]);
+            firfilt_rrrf_execute(modem->mark_cs, &re);
+            firfilt_rrrf_push(modem->mark_sn, modem->resamp_buff[j]);
+            firfilt_rrrf_execute(modem->mark_sn, &im);
             mark_mag = sqrtf(re * re + im * im);
 
-            firfilt_rrrf_push(space_cs, resamp_buff[j]);
-            firfilt_rrrf_execute(space_cs, &re);
-            firfilt_rrrf_push(space_sn, resamp_buff[j]);
-            firfilt_rrrf_execute(space_sn, &im);
+            firfilt_rrrf_push(modem->space_cs, modem->resamp_buff[j]);
+            firfilt_rrrf_execute(modem->space_cs, &re);
+            firfilt_rrrf_push(modem->space_sn, modem->resamp_buff[j]);
+            firfilt_rrrf_execute(modem->space_sn, &im);
             space_mag = sqrtf(re * re + im * im);
         }
 
         // Stage 3: Filter mark signal
-        firfilt_rrrf_push(mark_filt, mark_mag);
-        firfilt_rrrf_execute(mark_filt, &mark_mag);
-        mark_buff[buff_idx] = mark_mag;
-        firfilt_rrrf_push(space_filt, space_mag);
-        firfilt_rrrf_execute(space_filt, &space_mag);
-        space_buff[buff_idx] = space_mag;
+        firfilt_rrrf_push(modem->mark_filt, mark_mag);
+        firfilt_rrrf_execute(modem->mark_filt, &mark_mag);
+        modem->mark_buff[modem->buff_idx] = mark_mag;
+        firfilt_rrrf_push(modem->space_filt, space_mag);
+        firfilt_rrrf_execute(modem->space_filt, &space_mag);
+        modem->space_buff[modem->buff_idx] = space_mag;
 
-        buff_idx += 1;
-        buff_idx %= SCALE_WIN_LEN * win_sz;
+        modem->buff_idx += 1;
+        modem->buff_idx %= SCALE_WIN_LEN * win_sz;
 
         // Stage 3.1: Calculate AGC scaling parameters
-        if(buff_idx == 0) {
-            minmax(mark_buff, SCALE_WIN_LEN * win_sz, &mark_min, &mark_max);
-            mark_scale = 1.0 / (mark_max - mark_min);
-            mark_scale = (mark_scale > 10 ? 10 : mark_scale);
+        if(modem->buff_idx == 0) {
+            minmax(modem->mark_buff, SCALE_WIN_LEN * win_sz, &modem->mark_min, &modem->mark_max);
+            modem->mark_scale = 1.0 / (modem->mark_max - modem->mark_min);
+            modem->mark_scale = (modem->mark_scale > 10 ? 10 : modem->mark_scale);
 
-            minmax(space_buff, SCALE_WIN_LEN * win_sz, &space_min, &space_max);
-            space_scale = 1.0 / (space_max - space_min);
-            space_scale = (space_scale > 10 ? 10 : space_scale);
+            minmax(modem->space_buff, SCALE_WIN_LEN * win_sz, &modem->space_min, &modem->space_max);
+            modem->space_scale = 1.0 / (modem->space_max - modem->space_min);
+            modem->space_scale = (modem->space_scale > 10 ? 10 : modem->space_scale);
         }
 
         // Scale waveforms
-        mark_mag -= (mark_max + mark_min) / 2;
-        mark_mag *= mark_scale;
+        mark_mag -= (modem->mark_max + modem->mark_min) / 2;
+        mark_mag *= modem->mark_scale;
 
-        space_mag -= (space_max + space_min) / 2;
-        space_mag *= space_scale;
+        space_mag -= (modem->space_max + modem->space_min) / 2;
+        space_mag *= modem->space_scale;
 
         // Data = space - mark, differential waveforms
         float data_mag = space_mag - mark_mag;
 
         /*
-        fwrite(&resamp_buff[j], sizeof(float), 1, out);
-        fwrite(&mark_mag, sizeof(float), 1, out);
-        fwrite(&space_mag, sizeof(float), 1, out);
-        fwrite(&data_mag, sizeof(float), 1, out);
+        fwrite(&modem->resamp_buff[j], sizeof(float), 1, modem->out);
+        fwrite(&mark_mag, sizeof(float), 1, modem->out);
+        fwrite(&space_mag, sizeof(float), 1, modem->out);
+        fwrite(&data_mag, sizeof(float), 1, modem->out);
         */
 
         // Stage 4: Resample to 4 sps
         unsigned int num_written2;
-        resamp_rrrf_execute(sps2, data_mag, &data_mag, &num_written2);
+        resamp_rrrf_execute(modem->sps2, data_mag, &data_mag, &num_written2);
         if(num_written2 == 0) continue;
 
         // Stage 4.1 - Calculate correlation of flag
         float flag_corr_mag;
-        firfilt_rrrf_push(flag_corr, data_mag);
-        firfilt_rrrf_execute(flag_corr, &flag_corr_mag);
+        firfilt_rrrf_push(modem->flag_corr, data_mag);
+        firfilt_rrrf_execute(modem->flag_corr, &flag_corr_mag);
 
         /*
-        fwrite(&data_mag, sizeof(float), 1, out);
-        fwrite(&flag_corr_mag, sizeof(float), 1, out);
+        fwrite(&data_mag, sizeof(float), 1, modem->out);
+        fwrite(&modem->flag_corr_mag, sizeof(float), 1, modem->out);
         */
 
         // Stage 5 - Clock Recovery
         float bit;
-        symsync_rrrf_execute(sync, &data_mag, 1, &bit, &num_written2);
+        symsync_rrrf_execute(modem->sync, &data_mag, 1, &bit, &num_written2);
         if(num_written2 == 0) continue;
         //float tau = symsync_rrrf_get_tau(sync);
 
         // Stage 6 - Differential Decoding
         float nrzi = fabs(bit);
-        if((bit < 0 && last_bit >= 0) || (bit >= 0 && last_bit < 0)) {
+        if((bit < 0 && modem->last_bit >= 0) || (bit >= 0 && modem->last_bit < 0)) {
             nrzi *= -1;
         }
-        last_bit = bit;
+        modem->last_bit = bit;
 
         if(out_bit) *out_bit = nrzi;
         return true;
@@ -244,27 +233,28 @@ bool dsp_process(float samp, float *out_bit) {
     return false;
 }
 
-void dsp_destroy(void) {
-    if(rs) resamp_rrrf_destroy(rs);
-    if(sps2) resamp_rrrf_destroy(sps2);
+void bell202_destroy(bell202_t *modem) {
+    if(modem->rs) resamp_rrrf_destroy(modem->rs);
+    if(modem->resamp_buff) free(modem->resamp_buff);
 
-    if(mark_cs) firfilt_rrrf_destroy(mark_cs);
-    if(mark_sn) firfilt_rrrf_destroy(mark_sn);
-    if(space_cs) firfilt_rrrf_destroy(space_cs);
-    if(space_sn) firfilt_rrrf_destroy(space_sn);
-    if(mark_filt) firfilt_rrrf_destroy(mark_filt);
-    if(space_filt) firfilt_rrrf_destroy(space_filt);
-    if(flag_corr) firfilt_rrrf_destroy(flag_corr);
-    if(sync) symsync_rrrf_destroy(sync);
+    if(modem->sps2) resamp_rrrf_destroy(modem->sps2);
 
-    if(cos_mark) free(cos_mark);
-    if(sin_mark) free(sin_mark);
-    if(cos_space) free(cos_space);
-    if(sin_space) free(sin_space);
-    if(mark_buff) free(mark_buff);
-    if(space_buff) free(space_buff);
-    if(data_filt_taps) free(data_filt_taps);
-    if(resamp_buff) free(resamp_buff);
+    if(modem->mark_cs) firfilt_rrrf_destroy(modem->mark_cs);
+    if(modem->mark_sn) firfilt_rrrf_destroy(modem->mark_sn);
+    if(modem->space_cs) firfilt_rrrf_destroy(modem->space_cs);
+    if(modem->space_sn) firfilt_rrrf_destroy(modem->space_sn);
+    if(modem->mark_filt) firfilt_rrrf_destroy(modem->mark_filt);
+    if(modem->space_filt) firfilt_rrrf_destroy(modem->space_filt);
+    if(modem->flag_corr) firfilt_rrrf_destroy(modem->flag_corr);
+    if(modem->sync) symsync_rrrf_destroy(modem->sync);
 
-    if(out) fclose(out);
+    if(modem->cos_mark) free(modem->cos_mark);
+    if(modem->sin_mark) free(modem->sin_mark);
+    if(modem->cos_space) free(modem->cos_space);
+    if(modem->sin_space) free(modem->sin_space);
+    if(modem->mark_buff) free(modem->mark_buff);
+    if(modem->space_buff) free(modem->space_buff);
+    if(modem->data_filt_taps) free(modem->data_filt_taps);
+
+    if(modem->out) fclose(modem->out);
 }
