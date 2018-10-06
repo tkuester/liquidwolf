@@ -53,7 +53,7 @@ bool do_you_wanna_build_a_packet(ax25_pkt_t *pkt, float *buff, size_t len) {
                 data[i] ^= (1 << j);
                 ret = hdlc_crc(data, pktlen - 2);
                 crc = data[pktlen - 1] << 8 | data[pktlen - 2];
-                if(ret == crc) { i = pktlen; break; }
+                if(ret == crc) goto done;
                 // If the flip didn't get us a packet, reset things
                 data[i] ^= (1 << j);
             }
@@ -74,7 +74,7 @@ bool do_you_wanna_build_a_packet(ax25_pkt_t *pkt, float *buff, size_t len) {
                 }
                 ret = hdlc_crc(data, pktlen - 2);
                 crc = data[pktlen - 1] << 8 | data[pktlen - 2];
-                if(ret == crc) { i = pktlen; break; }
+                if(ret == crc) goto done;
                 if(j == 7 && i != (pktlen - 1)) {
                     data[i] ^= 0x80;
                     data[i + 1] ^= 0x01;
@@ -85,6 +85,7 @@ bool do_you_wanna_build_a_packet(ax25_pkt_t *pkt, float *buff, size_t len) {
         }
     }
 
+done:
     if(ret == crc) {
         int unpacked_ok = ax25_pkt_unpack(pkt, data, pktlen - 2);
         if(unpacked_ok == 0) {
