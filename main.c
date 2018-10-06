@@ -56,6 +56,35 @@ bool crc16_ccitt(const float *buff, size_t len) {
     return ret == crc;
 }
 
+SNDFILE* open_wav(const char *path, SF_INFO *info) {
+    if(!path || !info) return NULL;
+
+    SNDFILE *sf = NULL;
+    memset(info, 0, sizeof(SF_INFO));
+
+    sf = sf_open(path, SFM_READ, info);
+    if(sf == NULL) {
+        fprintf(stderr, "Can't open file %s for reading\n", path);
+        goto fail;
+    }
+
+    if(info->channels > 2) {
+        fprintf(stderr, "WARNING: %d channels detected, only reading from ch 0\n", info->channels);
+        goto fail;
+    }
+
+    if(info->samplerate < 8000) {
+        fprintf(stderr, "ERROR: Sample rate must be at >=8000, is %d\n", info->samplerate);
+        goto fail;
+    }
+
+    printf("Opened %s: %d Hz, %d chan\n", path, info->samplerate, info->channels);
+    return sf;
+
+fail:
+    return NULL;
+}
+
 int main(int argc, char **argv) {
     int rc = 1;
     struct timeval tv_start, tv_done;
@@ -65,9 +94,10 @@ int main(int argc, char **argv) {
     SF_INFO sfinfo;
 
     float *samps = NULL;
+    bell202_t modem;
     hdlc_state_t hdlc;
-    hdlc_init(&hdlc);
 
+    size_t num_samps = 0;
     size_t num_packets = 0;
     size_t num_one_flip_packets = 0;
 
@@ -77,23 +107,8 @@ int main(int argc, char **argv) {
     }
 
     wavfile = argv[1];
-    memset(&sfinfo, 0, sizeof(sfinfo));
-    sf = sf_open(wavfile, SFM_READ, &sfinfo);
-    if(sf == NULL) {
-        fprintf(stderr, "Can't open file %s for reading\n", wavfile);
-        goto fail;
-    }
-
-    if(sfinfo.channels > 2) {
-        fprintf(stderr, "WARNING: %d channels detected, only reading from ch 0\n", sfinfo.channels);
-        goto fail;
-    }
-
-    if(sfinfo.samplerate < 8000) {
-        fprintf(stderr, "ERROR: Sample rate must be at >=8000, is %d\n", sfinfo.samplerate);
-        goto fail;
-    }
-    printf("Opened %s: %d Hz, %d chan\n", wavfile, sfinfo.samplerate, sfinfo.channels);
+    sf = open_wav(wavfile, &sfinfo);
+    if(!sf) goto fail;
 
     samps = malloc(sizeof(float) * SAMPS_SIZE * sfinfo.channels);
     if(!samps) {
@@ -101,13 +116,12 @@ int main(int argc, char **argv) {
         goto fail;
     }
 
-    bell202_t modem;
     if(!bell202_init(&modem, sfinfo.samplerate)) {
         fprintf(stderr, "Unable to init DSP structures\n");
         goto fail;
     }
+    hdlc_init(&hdlc);
 
-    size_t idx = 0;
     gettimeofday(&tv_start, NULL);
     while(1) {
         //read = fread(&samps, sizeof(float), ASIZE(samps), fp);
@@ -120,7 +134,7 @@ int main(int argc, char **argv) {
         }
 
         for(int i = 0; i < read; i += sfinfo.channels) {
-            idx += 1;
+            num_samps += 1;
 
             float out_bit;
             if(!bell202_process(&modem, samps[i], &out_bit)) continue;
@@ -151,8 +165,8 @@ int main(int argc, char **argv) {
 
     gettimeofday(&tv_done, NULL);
 
-    float samp_per_sec = idx / ((tv_done.tv_sec + tv_done.tv_usec / 1e6) - (tv_start.tv_sec + tv_start.tv_usec / 1e6));
-    printf("Processed %zu samples\n", idx);
+    float samp_per_sec = num_samps / ((tv_done.tv_sec + tv_done.tv_usec / 1e6) - (tv_start.tv_sec + tv_start.tv_usec / 1e6));
+    printf("Processed %zu samples\n", num_samps);
     printf("%d samp / sec\n", (int)samp_per_sec);
     printf("%.1fx speed\n", samp_per_sec / sfinfo.samplerate);
     printf("%zu packets\n", num_packets);
