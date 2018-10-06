@@ -7,7 +7,7 @@
 #include <liquid/liquid.h>
 #include <sndfile.h>
 
-#include "dsp.h"
+#include "bell202.h"
 #include "hdlc.h"
 #include "ax25.h"
 #include "util.h"

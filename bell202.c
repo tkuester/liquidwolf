@@ -3,7 +3,7 @@
 #include <math.h>
 
 #include <liquid/liquid.h>
-#include "dsp.h"
+#include "bell202.h"
 #include "util.h"
 
 const int baud_rate = 1200;
