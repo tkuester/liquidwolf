@@ -5,8 +5,24 @@ now. Don't trust it for anything.
 
 ## Building
 
-You need [liquiddsp](https://github.com/jgaeddert/liquid-dsp), as well as
-libsndfile. You can build the software by just typing "make".
+liquidwolf has three main dependencies, [liquiddsp](https://github.com/jgaeddert/liquid-dsp),
+libsndfile, and CMake for the build system.
+
+On Ubuntu, you can install libsndfile, with `sudo apt-get install libsndfile1-dev`.
+
+Follow the directions on the liquiddsp repository to install it. Currently, I'm
+working off of master-ish. I'll try to pin this down later.
+
+Once the dependencies are installed, run
+
+```bash
+mkdir build
+cd build
+cmake ..
+make -j8
+```
+
+You can also run the unit tests with `make test`.
 
 ## Usage
 
@@ -39,9 +55,18 @@ should fix that up.
 
 ## TODO
 
-Everything actually
+* Standardize on Liquid-DSP 1.3.1, if possible? PPA?
+* Realtime audio input
+* RTL-SDR input?
+* Everything actually.
 
 ## Credits
 
+Thanks to W6KWF for his fantastic 2014 thesis on APRS, "Examining Ambiguities
+in the Automatic Packet Reporting System".
+
 Special thanks to WB2OSZ for his groundbreaking and incredibly well documented
 work on [direwolf](https://github.com/wb2osz/direwolf).
+
+Thanks to [sharebrained](https://twitter.com/sharebrained) for helping me improve
+on the signal processing!
