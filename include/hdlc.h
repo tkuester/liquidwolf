@@ -1,3 +1,7 @@
+/**
+ * @file hdlc.h
+ * @brief State machine definition
+ */
 #ifndef _HDLC_H
 #define _HDLC_H
 
@@ -8,11 +12,12 @@
 // TODO: Make this dynamic?
 #define HDLC_SAMP_BUFF_LEN ((256 + 10) * 8)
 
+/** @brief Holds the state for the HDLC FSM */
 typedef struct {
-    bool in_packet;
-    size_t one_count;
-    float samps[HDLC_SAMP_BUFF_LEN];
-    size_t buff_idx;
+    bool in_packet; /**< @brief Are we currently in a packet? */
+    size_t one_count; /**< @brief The number of consecutive ones */
+    float samps[HDLC_SAMP_BUFF_LEN]; /**< @brief Stores bit samples for the buffer */
+    size_t buff_idx; /**< @brief The number of bit samples in the buffer */
 } hdlc_state_t;
 
 void hdlc_debug(FILE *fp, hdlc_state_t *state);

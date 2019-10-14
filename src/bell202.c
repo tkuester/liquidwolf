@@ -1,3 +1,7 @@
+/**
+ * @file bell202.c
+ * @brief Audio signal processing code here
+ */
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
@@ -9,13 +13,23 @@
 const int baud_rate = 1200;
 const int mark = 1200;
 const int space = 2200;
-const int output_rate = 13200; // (1200: 11, 2200: 6)
+const int output_rate = 13200; // (1200: 11 samples, 2200: 6 samples)
 #define win_sz (output_rate / baud_rate)
 #define SCALE_WIN_LEN (9)
 
+/**
+ * Create and populate a bell202_t modem at the given sample rate.
+ *
+ * @param modem      The modem struct to populate
+ * @param input_rate The input sample rate, must be > 0
+ * 
+ * @return true if the function completed successfully
+ */
 bool bell202_init(bell202_t *modem, int input_rate) {
     if(modem == NULL) return false;
     memset(modem, 0, sizeof(bell202_t));
+
+    if(input_rate <= 0) goto fail;
 
     modem->input_rate = input_rate;
 
@@ -135,6 +149,14 @@ fail:
     return false;
 }
 
+/**
+ * Push a sample into the modem object for processing.
+ *
+ * @param samp    The sample to process
+ * @param out_bit Updated when clock recovery outputs a bit
+ *
+ * @return true if clock recovery output a bit
+ */
 bool bell202_process(bell202_t *modem, float samp, float *out_bit) {
     unsigned int num_resamp;
 
@@ -233,6 +255,11 @@ bool bell202_process(bell202_t *modem, float samp, float *out_bit) {
     return false;
 }
 
+/**
+ * Frees memory allocated in bell202_init
+ *
+ * @param modem The modem to free
+ */
 void bell202_destroy(bell202_t *modem) {
     if(modem->rs) resamp_rrrf_destroy(modem->rs);
     if(modem->resamp_buff) free(modem->resamp_buff);

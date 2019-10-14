@@ -1,3 +1,7 @@
+/**
+ * @file util.c
+ * @brief Misc utility functions
+ */
 #include <stdio.h>
 #include <string.h>
 #include <math.h>

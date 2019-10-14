@@ -1,3 +1,7 @@
+/**
+ * @file hdlc.c
+ * @brief Handles HDLC deframing
+ */
 #include <stdio.h>
 
 #include "hdlc.h"
@@ -5,8 +9,8 @@
 /**
  * Utility function to print the state of the HDLC stream
  *
- * fp: The stream to print the message
- * state: The state to debug
+ * @param fp    The stream to print the message
+ * @param state The state to debug
  */
 void hdlc_debug(FILE *fp, hdlc_state_t *state) {
     fprintf(fp, "hdlc_state(in_packet=%5s, one_count=%3zu, buff_idx=%3zu)\n",
@@ -18,7 +22,7 @@ void hdlc_debug(FILE *fp, hdlc_state_t *state) {
 /**
  * Initializes the HDLC state structure
  *
- * state: The structure to init
+ * @param state The HDLC FSM to init
  */
 void hdlc_init(hdlc_state_t *state) {
     if(state == NULL) return;
@@ -31,11 +35,11 @@ void hdlc_init(hdlc_state_t *state) {
 /**
  * Processes a sample to determine if it completes an HDLC frame
  *
- * state: The struct which maintains state between calls
- * samp: The sample to process
- * len: The number of samples in the frame (if EOF detected)
+ * @param state The struct which maintains state between calls
+ * @param samp  The sample to process
+ * @param len   The number of samples in the frame (if EOF detected)
  *
- * Returns: true if a frame was detected
+ * @return true if a frame was detected
  */
 bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
     if(state == NULL) return false;
@@ -105,16 +109,15 @@ bool hdlc_execute(hdlc_state_t *state, float samp, size_t *len) {
 }
 
 /**
- * Calculates the HDLC checksum for a block of bytes. The buffer and length
- * should not include the checksum.
+ * Calculates the HDLC checksum for a block of bytes. If the buffer
+ * includes the checksum, subtract that from the length parameter.
  *
  * Thanks gnuradio. *yoink*
  *
- * data: The buffer of data
- * len: The number of bytes in the buffer
+ * @param data The buffer of data
+ * @param len  The number of bytes in the buffer
  *
- * Returns:
- * uin16_t - The checksum
+ * @return The checksum
  */
 uint16_t hdlc_crc(uint8_t *data, size_t len) {
     unsigned int POLY=0x8408; //reflected 0x1021
