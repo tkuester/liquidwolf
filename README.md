@@ -5,17 +5,20 @@ now. Don't trust it for anything.
 
 ## Building
 
-liquidwolf has three main dependencies, [liquiddsp](https://github.com/jgaeddert/liquid-dsp),
+liquidwolf has three main dependencies, [libliquid2d](https://github.com/jgaeddert/liquid-dsp),
 libsndfile, and CMake for the build system.
 
-On Ubuntu, you can install libsndfile, with `sudo apt-get install libsndfile1-dev`.
-
-Follow the directions on the liquiddsp repository to install it. Currently, I'm
-working off of master-ish. I'll try to pin this down later.
-
-Once the dependencies are installed, run
+On Ubuntu, to install the dependencies:
 
 ```bash
+sudo apt install cmake libsndfile1-dev libliquid-dev
+```
+
+Then, clone the repo and build
+
+```
+git clone https://github.com/tkuester/liquidwolf
+cd liquidwolf
 mkdir build
 cd build
 cmake ..
@@ -55,7 +58,6 @@ should fix that up.
 
 ## TODO
 
-* Standardize on Liquid-DSP 1.3.1, if possible? PPA?
 * Realtime audio input
 * RTL-SDR input?
 * Everything actually.
