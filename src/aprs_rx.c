@@ -1,6 +1,6 @@
 #include "aprs_rx.h"
 
-aprs_rx_t *aprs_rx_init(char *wavfile) {
+aprs_rx_t *aprs_rx_init(void) {
     aprs_rx_t *ret = NULL;
     ret = malloc(sizeof(aprs_rx_t) * 1);
     if(!ret) goto fail;
@@ -16,13 +16,6 @@ aprs_rx_t *aprs_rx_init(char *wavfile) {
 
     hdlc_init(&ret->hdlc);
 
-    if(wav_open(wavfile, &ret->src.wav) != 0) goto fail;
-
-    if(!bell202_init(&ret->modem, ret->src.wav.samplerate)) {
-        fprintf(stderr, "Unable to init DSP structures\n");
-        goto fail;
-    }
-
     return ret;
 
 fail:
@@ -30,10 +23,39 @@ fail:
     return NULL;
 }
 
+bool aprs_rx_wav_open(aprs_rx_t *rx, const char *wavfile) {
+    if(!rx) return false;
+
+    // TODO: Check if the structure is already init'd
+    if(wav_open(wavfile, &rx->src.wav) != 0) goto fail;
+
+    if(!bell202_init(&rx->modem, rx->src.wav.samplerate)) {
+        fprintf(stderr, "Unable to init DSP structures\n");
+        goto fail;
+    }
+
+    rx->src_type = SOURCE_WAV;
+
+    return true;
+
+fail:
+    return false;
+}
+
 void aprs_rx_process(aprs_rx_t *rx) {
     gettimeofday(&rx->tv_start, NULL);
     while(1) {
-        ssize_t read = wav_read(&rx->src.wav, rx->samps, rx->samps_len);
+        // TODO: Use function pointers, call rx->read_func()
+        ssize_t read;
+        switch(rx->src_type) {
+            case SOURCE_WAV:
+                read = wav_read(&rx->src.wav, rx->samps, rx->samps_len);
+                break;
+
+            default:
+                read = 0;
+                break;
+        }
 
         for(ssize_t i = 0; i < read; i += 1) {
             rx->num_samps += 1;
@@ -74,7 +96,14 @@ void aprs_rx_destroy(aprs_rx_t *rx) {
     }
 
     if(rx->samps) free(rx->samps);
-    wav_close(&rx->src.wav);
+    switch(rx->src_type) {
+        case SOURCE_WAV:
+            wav_close(&rx->src.wav);
+            break;
+
+        default:
+            break;
+    }
     bell202_destroy(&rx->modem);
 }
 

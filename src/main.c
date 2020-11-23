@@ -17,8 +17,9 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    rx = aprs_rx_init(argv[1]);
+    rx = aprs_rx_init();
     if(!rx) goto fail;
+    if(!aprs_rx_wav_open(rx, argv[1])) goto fail;
 
     aprs_rx_process(rx);
 

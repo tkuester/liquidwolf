@@ -21,8 +21,14 @@ typedef union {
     wav_t wav;
 } source_t;
 
+typedef enum {
+    SOURCE_NONE = 0,
+    SOURCE_WAV
+} source_type_t;
+
 typedef struct {
     source_t src;
+    source_type_t src_type;
     float *samps;
     size_t samps_len;
     bell202_t modem;
@@ -36,7 +42,8 @@ typedef struct {
     struct timeval tv_done;
 } aprs_rx_t;
 
-aprs_rx_t *aprs_rx_init(char *wavfile);
+aprs_rx_t *aprs_rx_init(void);
+bool aprs_rx_wav_open(aprs_rx_t *rx, const char *wavfile);
 void aprs_rx_process(aprs_rx_t *rx);
 void aprs_rx_destroy(aprs_rx_t *rx);
 
