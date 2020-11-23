@@ -48,7 +48,7 @@ typedef struct {
 
 aprs_rx_t *aprs_rx_init(void);
 bool aprs_rx_wav_open(aprs_rx_t *rx, const char *wavfile);
-bool aprs_rx_stdin_open(aprs_rx_t *rx);
+bool aprs_rx_stdin_open(aprs_rx_t *rx, int rate);
 void aprs_rx_process(aprs_rx_t *rx);
 void aprs_rx_destroy(aprs_rx_t *rx);
 

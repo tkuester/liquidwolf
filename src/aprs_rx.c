@@ -43,10 +43,10 @@ fail:
     return false;
 }
 
-bool aprs_rx_stdin_open(aprs_rx_t *rx) {
+bool aprs_rx_stdin_open(aprs_rx_t *rx, int rate) {
     if(!rx) return false;
 
-    if(!bell202_init(&rx->modem, 24000)) {
+    if(!bell202_init(&rx->modem, rate)) {
         fprintf(stderr, "Unable to init DSP structures\n");
         return false;
     }
