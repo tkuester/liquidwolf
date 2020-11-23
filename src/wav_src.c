@@ -1,6 +1,7 @@
 #include "wav_src.h"
+#include "aprs_rx.h"
 
-int wav_open(const char *path, wav_t *wav) {
+int wav_open(const char *path, wav_src_t *wav) {
     if(!path || !wav) return -1;
 
     wav->sf = NULL;
@@ -39,7 +40,7 @@ fail:
     return -1;
 }
 
-void wav_close(wav_t *wav) {
+void wav_close(wav_src_t *wav) {
     if(!wav) return;
 
     if(wav->sf) {
@@ -53,23 +54,24 @@ void wav_close(wav_t *wav) {
     }
 }
 
-ssize_t wav_read(const wav_t *wav, float *samps, size_t len) {
+ssize_t wav_read(const source_t *src, float *samps, size_t len) {
     ssize_t read;
 
-    if(!wav || !wav->sf) return -1;
+    if(!src) return -1;
+    const wav_src_t wav = src->wav;
 
-    if(wav->info.channels > 1) {
-        read = sf_readf_float(wav->sf, wav->tmp_buff, len);
+    if(wav.info.channels > 1) {
+        read = sf_readf_float(wav.sf, wav.tmp_buff, len);
         for(size_t i = 0; i < read; i++) {
-            samps[i] = wav->tmp_buff[i * wav->info.channels];
+            samps[i] = wav.tmp_buff[i * wav.info.channels];
         }
     } else {
-        read = sf_read_float(wav->sf, samps, len);
+        read = sf_read_float(wav.sf, samps, len);
     }
 
     if(read != len) {
-        if(sf_error(wav->sf)) {
-            fprintf(stderr, "Read error: %d\n", sf_error(wav->sf));
+        if(sf_error(wav.sf)) {
+            fprintf(stderr, "Read error: %d\n", sf_error(wav.sf));
             goto fail;
         }
     }

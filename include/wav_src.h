@@ -6,15 +6,18 @@
 
 #include <sndfile.h>
 
+union source;
+typedef union source source_t;
+
 typedef struct {
     SF_INFO info;
     SNDFILE *sf;
     int samplerate;
     float *tmp_buff;
-} wav_t;
+} wav_src_t;
 
-int wav_open(const char *path, wav_t *wav);
-void wav_close(wav_t *wav);
-ssize_t wav_read(const wav_t *wav, float *samps, size_t len);
+int wav_open(const char *path, wav_src_t *wav);
+void wav_close(wav_src_t *wav);
+ssize_t wav_read(const source_t *wav, float *samps, size_t len);
 
 #endif

@@ -35,6 +35,7 @@ bool aprs_rx_wav_open(aprs_rx_t *rx, const char *wavfile) {
     }
 
     rx->src_type = SOURCE_WAV;
+    rx->read_func = &wav_read;
 
     return true;
 
@@ -47,15 +48,7 @@ void aprs_rx_process(aprs_rx_t *rx) {
     while(1) {
         // TODO: Use function pointers, call rx->read_func()
         ssize_t read;
-        switch(rx->src_type) {
-            case SOURCE_WAV:
-                read = wav_read(&rx->src.wav, rx->samps, rx->samps_len);
-                break;
-
-            default:
-                read = 0;
-                break;
-        }
+        read = rx->read_func(&rx->src, rx->samps, rx->samps_len);
 
         for(ssize_t i = 0; i < read; i += 1) {
             rx->num_samps += 1;

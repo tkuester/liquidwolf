@@ -14,11 +14,10 @@
 #include "util.h"
 #include "wav_src.h"
 
-
 #define SAMPS_SIZE (1024)
 
-typedef union {
-    wav_t wav;
+typedef union source {
+    wav_src_t wav;
 } source_t;
 
 typedef enum {
@@ -26,9 +25,12 @@ typedef enum {
     SOURCE_WAV
 } source_type_t;
 
+typedef ssize_t (*source_read_t)(const union source *src, float *buff, size_t len);
+
 typedef struct {
-    source_t src;
+    union source src;
     source_type_t src_type;
+    source_read_t read_func;
     float *samps;
     size_t samps_len;
     bell202_t modem;
