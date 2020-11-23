@@ -5,12 +5,12 @@
 #include <sys/time.h>
 
 #include <liquid/liquid.h>
-#include <sndfile.h>
 
 #include "bell202.h"
 #include "hdlc.h"
 #include "ax25.h"
 #include "util.h"
+#include "wav_src.h"
 
 #ifndef _LIQUIDWOLF_VERSION
 #define _LIQUIDWOLF_VERSION "(unversioned)"
@@ -102,42 +102,12 @@ done:
     return ret == crc;
 }
 
-SNDFILE* open_wav(const char *path, SF_INFO *info) {
-    if(!path || !info) return NULL;
-
-    SNDFILE *sf = NULL;
-    memset(info, 0, sizeof(SF_INFO));
-
-    sf = sf_open(path, SFM_READ, info);
-    if(sf == NULL) {
-        fprintf(stderr, "Can't open file %s for reading\n", path);
-        goto fail;
-    }
-
-    if(info->channels > 2) {
-        fprintf(stderr, "WARNING: %d channels detected, only reading from ch 0\n", info->channels);
-        goto fail;
-    }
-
-    if(info->samplerate < 8000) {
-        fprintf(stderr, "ERROR: Sample rate must be at >=8000, is %d\n", info->samplerate);
-        goto fail;
-    }
-
-    printf("Opened %s: %d Hz, %d chan\n", path, info->samplerate, info->channels);
-    return sf;
-
-fail:
-    return NULL;
-}
-
 int main(int argc, char **argv) {
     int rc = 1;
     struct timeval tv_start, tv_done;
 
     char *wavfile = NULL;
-    SNDFILE *sf = NULL;
-    SF_INFO sfinfo;
+    wav_t wav;
 
     float *samps = NULL;
     bell202_t modem;
@@ -154,34 +124,27 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    wavfile = argv[1];
-    sf = open_wav(wavfile, &sfinfo);
-    if(!sf) goto fail;
-
-    samps = malloc(sizeof(float) * SAMPS_SIZE * sfinfo.channels);
+    samps = malloc(sizeof(float) * SAMPS_SIZE * 1024);
     if(!samps) {
         fprintf(stderr, "malloc\n");
         goto fail;
     }
 
-    if(!bell202_init(&modem, sfinfo.samplerate)) {
+    wavfile = argv[1];
+    if(wav_open(wavfile, &wav) != 0) goto fail;
+
+    if(!bell202_init(&modem, wav.samplerate)) {
         fprintf(stderr, "Unable to init DSP structures\n");
         goto fail;
     }
+
     hdlc_init(&hdlc);
 
     gettimeofday(&tv_start, NULL);
     while(1) {
-        //read = fread(&samps, sizeof(float), ASIZE(samps), fp);
-        size_t read = sf_read_float(sf, samps, SAMPS_SIZE);
-        if(read != SAMPS_SIZE) {
-            if(sf_error(sf)) {
-                fprintf(stderr, "Read error: %d\n", sf_error(sf));
-                goto fail;
-            }
-        }
+        ssize_t read = wav_read(&wav, samps, SAMPS_SIZE);
 
-        for(int i = 0; i < read; i += sfinfo.channels) {
+        for(ssize_t i = 0; i < read; i += 1) {
             num_samps += 1;
 
             float out_bit;
@@ -210,7 +173,7 @@ int main(int argc, char **argv) {
     float samp_per_sec = num_samps / ((tv_done.tv_sec + tv_done.tv_usec / 1e6) - (tv_start.tv_sec + tv_start.tv_usec / 1e6));
     printf("Processed %zu samples\n", num_samps);
     printf("%d samp / sec\n", (int)samp_per_sec);
-    printf("%.1fx speed\n", samp_per_sec / sfinfo.samplerate);
+    printf("%.1fx speed\n", samp_per_sec / wav.info.samplerate);
     printf("%zu packets\n", num_packets);
     printf("%zu one flip packets\n", num_one_flip_packets);
 
@@ -218,7 +181,7 @@ int main(int argc, char **argv) {
 
 fail:
     if(samps) free(samps);
-    if(sf) sf_close(sf);
+    wav_close(&wav);
     bell202_destroy(&modem);
     return rc;
 }
