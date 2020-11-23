@@ -4,6 +4,7 @@ set(SOURCES
     bell202.c
     util.c
     wav_src.c
+    aprs_rx.c
     main.c
 )
 add_executable(liquidwolf ${SOURCES})
