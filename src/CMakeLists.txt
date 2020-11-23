@@ -1,6 +1,6 @@
-add_library(hdlc hdlc.c)
 set(SOURCES
     ax25.c
+    hdlc.c
     bell202.c
     util.c
     wav_src.c
@@ -9,4 +9,4 @@ set(SOURCES
     main.c
 )
 add_executable(liquidwolf ${SOURCES})
-target_link_libraries(liquidwolf m ${LIQUIDDSP} ${SNDFILE} hdlc)
+target_link_libraries(liquidwolf m ${LIQUIDDSP} ${SNDFILE})
