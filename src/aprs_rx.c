@@ -111,6 +111,8 @@ void aprs_rx_destroy(aprs_rx_t *rx) {
             break;
     }
     bell202_destroy(&rx->modem);
+    free(rx);
+    rx = NULL;
 }
 
 void flip_smallest(float *data, size_t len) {
