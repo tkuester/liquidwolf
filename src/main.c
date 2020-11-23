@@ -19,7 +19,11 @@ int main(int argc, char **argv) {
 
     rx = aprs_rx_init();
     if(!rx) goto fail;
-    if(!aprs_rx_wav_open(rx, argv[1])) goto fail;
+    if(strcmp(argv[1], "-") == 0) {
+        if(!aprs_rx_stdin_open(rx)) goto fail;
+    } else {
+        if(!aprs_rx_wav_open(rx, argv[1])) goto fail;
+    }
 
     aprs_rx_process(rx);
 

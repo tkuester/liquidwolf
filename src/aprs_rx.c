@@ -43,6 +43,19 @@ fail:
     return false;
 }
 
+bool aprs_rx_stdin_open(aprs_rx_t *rx) {
+    if(!rx) return false;
+
+    if(!bell202_init(&rx->modem, 24000)) {
+        fprintf(stderr, "Unable to init DSP structures\n");
+        return false;
+    }
+
+    rx->src_type = SOURCE_STDIN;
+    rx->read_func = &stdin_read;
+    return true;
+}
+
 void aprs_rx_process(aprs_rx_t *rx) {
     gettimeofday(&rx->tv_start, NULL);
     while(1) {

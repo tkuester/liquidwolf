@@ -13,6 +13,7 @@
 #include "ax25.h"
 #include "util.h"
 #include "wav_src.h"
+#include "stdin_src.h"
 
 #define SAMPS_SIZE (1024)
 
@@ -22,7 +23,8 @@ typedef union source {
 
 typedef enum {
     SOURCE_NONE = 0,
-    SOURCE_WAV
+    SOURCE_WAV,
+    SOURCE_STDIN,
 } source_type_t;
 
 typedef ssize_t (*source_read_t)(const union source *src, float *buff, size_t len);
@@ -46,6 +48,7 @@ typedef struct {
 
 aprs_rx_t *aprs_rx_init(void);
 bool aprs_rx_wav_open(aprs_rx_t *rx, const char *wavfile);
+bool aprs_rx_stdin_open(aprs_rx_t *rx);
 void aprs_rx_process(aprs_rx_t *rx);
 void aprs_rx_destroy(aprs_rx_t *rx);
 
