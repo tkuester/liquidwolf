@@ -1,12 +1,22 @@
-set(SOURCES
-    ax25.c
-    hdlc.c
-    bell202.c
-    util.c
-    wav_src.c
-    stdin_src.c
-    aprs_rx.c
-    main.c
+add_executable(liquidwolf ${liquidwolf_SOURCES})
+
+target_compile_definitions(
+	liquidwolf
+	PUBLIC
+	_LIQUIDWOLF_VERSION=\"${GIT_DESCRIBE}\"
 )
-add_executable(liquidwolf ${SOURCES})
+
+target_sources(
+	liquidwolf
+	PUBLIC
+	aprs_rx.c
+	ax25.c
+	bell202.c
+	hdlc.c
+	stdin_src.c
+	util.c
+	wav_src.c
+	main.c
+)
+
 target_link_libraries(liquidwolf m ${LIQUIDDSP} ${SNDFILE})

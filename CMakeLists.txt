@@ -1,5 +1,12 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.13)
 project(liquidwolf C)
+
+execute_process(
+  COMMAND git describe --dirty
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+  OUTPUT_VARIABLE GIT_DESCRIBE
+  OUTPUT_STRIP_TRAILING_WHITESPACE
+)
 
 find_library(SNDFILE
     NAMES sndfile
@@ -8,15 +15,6 @@ find_library(SNDFILE
 find_library(LIQUIDDSP
     NAMES liquid
 )
-
-execute_process(
-  COMMAND git describe --dirty
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  OUTPUT_VARIABLE GIT_COMMIT_HASH
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-
-add_definitions("-D_LIQUIDWOLF_VERSION=\"${GIT_COMMIT_HASH}\"")
 
 include_directories(include)
 add_subdirectory(src)
