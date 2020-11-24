@@ -115,22 +115,7 @@ void aprs_rx_destroy(aprs_rx_t *rx) {
     rx = NULL;
 }
 
-void flip_smallest(float *data, size_t len) {
-    float min = INFINITY;
-    size_t min_idx = 0;
-
-    for(size_t j = 0; j < len; j++) {
-        if(fabs(data[j]) < min) {
-            min_idx = j;
-            min = fabs(data[j]);
-        }
-    }
-
-    data[min_idx] *= -1;
-    data[min_idx] += (data[min_idx] >= 0 ? 1 : -1);
-}
-
-bool do_you_wanna_build_a_packet(ax25_pkt_t *pkt, float *buff, size_t len) {
+bool do_you_wanna_build_a_packet(ax25_pkt_t *pkt, const float *buff, size_t len) {
     if(!pkt) return false;
     if(!buff) return false;
 
@@ -142,7 +127,7 @@ bool do_you_wanna_build_a_packet(ax25_pkt_t *pkt, float *buff, size_t len) {
     uint8_t data[4096];
     float qual;
 
-    size_t pktlen = bit_buff_to_bytes(buff, len, data, 4096, &qual);
+    size_t pktlen = bit_buff_to_bytes(buff, len, data, sizeof(data), &qual);
 
     uint16_t ret = hdlc_crc(data, pktlen - 2);
     uint16_t crc = data[pktlen - 1] << 8 | data[pktlen - 2];

@@ -93,3 +93,18 @@ void normalize(float *buff, size_t len) {
     for(size_t i = 0; i < len; i++) sum += buff[i];
     for(size_t i = 0; i < len; i++) buff[i] /= sum;
 }
+
+void flip_smallest(float *data, size_t len) {
+    float min = INFINITY;
+    size_t min_idx = 0;
+
+    for(size_t j = 0; j < len; j++) {
+        if(fabs(data[j]) < min) {
+            min_idx = j;
+            min = fabs(data[j]);
+        }
+    }
+
+    data[min_idx] *= -1;
+    data[min_idx] += (data[min_idx] >= 0 ? 1 : -1);
+}

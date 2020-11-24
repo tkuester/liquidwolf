@@ -20,4 +20,6 @@ float median(const float *buff, float *scratch, size_t len);
 
 void normalize(float *buff, size_t len);
 
+void flip_smallest(float *data, size_t len);
+
 #endif
